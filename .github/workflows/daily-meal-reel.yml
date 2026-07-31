@@ -2,10 +2,17 @@ name: Daily Nib Meal Reel
 
 on:
   schedule:
-    # ~7:00 PM JST = 10:00 UTC (offset a few minutes to avoid GitHub's
-    # top-of-the-hour scheduler congestion, which can delay/skip :00 crons)
-    - cron: "9 10 * * *"
+    # Target is 19:00 JST (10:00 UTC). GitHub's cron is best-effort and often
+    # delays or silently drops scheduled runs, so we retry every 15 minutes for
+    # two hours. The guard step below makes every attempt after the first
+    # successful post a no-op, so at most one reel goes out per JST day.
+    - cron: "9,24,39,54 10-11 * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Post even if today's meal reel already went out"
+        type: boolean
+        default: false
 
 concurrency:
   group: daily-meal-reel
@@ -21,8 +28,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whether today's meal reel already posted
+        id: guard
+        run: |
+          today="$(TZ=Asia/Tokyo date +%F)"
+          marker="bot/data/last_post_meal.txt"
+          echo "today_jst=$today" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            echo "Force requested - running."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [ -f "$marker" ] && [ "$(cat "$marker")" = "$today" ]; then
+            echo "Meal reel for $today already posted - skipping."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No meal reel recorded for $today - running."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python
+        if: steps.guard.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -30,9 +57,11 @@ jobs:
           cache-dependency-path: bot/requirements.txt
 
       - name: Install dependencies
+        if: steps.guard.outputs.should_run == 'true'
         run: pip install -r bot/requirements.txt
 
       - name: Generate and post meal reel
+        if: steps.guard.outputs.should_run == 'true'
         env:
           INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
@@ -46,15 +75,23 @@ jobs:
           AUTO_POST: "false"
         run: python bot/run_daily.py --type meal --post
 
-      - name: Persist used meals
-        if: success()
+      - name: Persist used meals and mark the day as done
+        if: success() && steps.guard.outputs.should_run == 'true'
         run: |
+          echo "${{ steps.guard.outputs.today_jst }}" > bot/data/last_post_meal.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bot/data/used_meals.json
+          git add bot/data/used_meals.json bot/data/last_post_meal.txt
           if git diff --staged --quiet; then
-            echo "No used_meals changes to commit."
-          else
-            git commit -m "chore: update used meals after daily meal reel"
-            git push
+            echo "Nothing to commit."
+            exit 0
           fi
+          git commit -m "chore: update used meals after daily meal reel"
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt), rebasing onto origin/main."
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+          done
+          exit 1
