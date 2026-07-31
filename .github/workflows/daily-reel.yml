@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r bot/requirements.txt
 
-      - name: Generate and post reel
+      - name: Generate and post fridge reel
         env:
           INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
@@ -40,7 +40,7 @@ jobs:
           EDGE_TTS_RATE: "+20%"
           EDGE_TTS_PITCH: "+0Hz"
           AUTO_POST: "false"
-        run: python bot/run_daily.py --post
+        run: python bot/run_daily.py --type fridge --post
 
       - name: Persist used topics
         if: success()

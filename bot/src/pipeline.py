@@ -2,18 +2,20 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 from .config import AUTO_POST, OUTPUT_DIR
 from .instagram import can_post, post_reel
+from .meal_image import generate_meal_image
+from .meal_video import render_meal_reel
 from .poses import extract_poses, list_poses
-from .script_gen import generate_script, mark_topic_used
+from .script_gen import ReelType, generate_script, mark_meal_used, mark_topic_used
 from .video import render_reel
 
 
-def run_daily(post: bool | None = None) -> dict:
-    """Generate today's Nib reel. Optionally publish to Instagram."""
+def run_daily(post: bool | None = None, reel_type: ReelType = "fridge") -> dict:
+    """Generate today's Nib reel (fridge or meal). Optionally publish to Instagram."""
     should_post = AUTO_POST if post is None else post
+    reel_type = "meal" if reel_type == "meal" else "fridge"
 
     poses = list_poses()
     if len(poses) < 5:
@@ -24,22 +26,35 @@ def run_daily(post: bool | None = None) -> dict:
     out_dir = OUTPUT_DIR / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("1/4 Writing script…")
-    script = generate_script()
+    print(f"1/4 Writing {reel_type} script…")
+    script = generate_script(reel_type=reel_type)
+    print(f"   Topic: {script.topic}")
+
+    if reel_type == "meal":
+        print("   Generating plated meal image…")
+        plate = generate_meal_image(script, out_dir)
+        script.meal_image_path = str(plate)
+
     (out_dir / "script.json").write_text(json.dumps(script.to_dict(), indent=2))
     (out_dir / "caption.txt").write_text(script.caption)
 
-    print(f"   Topic: {script.topic}")
     print("2/4 Rendering video + voice…")
-    video_path = render_reel(script, out_dir)
+    if reel_type == "meal":
+        video_path = render_meal_reel(script, out_dir)
+    else:
+        video_path = render_reel(script, out_dir)
     print(f"   Video: {video_path}")
 
-    mark_topic_used(script.topic_id)
+    if reel_type == "meal":
+        mark_meal_used(script.topic_id)
+    else:
+        mark_topic_used(script.topic_id)
 
     result = {
         "output_dir": str(out_dir),
         "video": str(video_path),
         "topic": script.topic,
+        "reel_type": reel_type,
         "caption": script.caption,
         "posted": False,
         "publish_response": None,

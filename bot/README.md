@@ -4,13 +4,23 @@ Automated pipeline for [@nibthefridgegoblin](https://instagram.com/nibthefridgeg
 
 ## What it does
 
-Every run:
+Two daily reel types:
 
-1. Picks a nutrition/fitness topic (no repeats until the list cycles)
+| Type | Schedule (JST) | Content |
+|------|----------------|---------|
+| **fridge** | 1:00 PM | Fridge-find nutrition tip in front of the open fridge |
+| **meal** | 7:00 PM | Quick easy delicious meal in the kitchen — animated ingredients + plated finale |
+
+Each run:
+
+1. Picks a topic/meal (no repeats until the list cycles)
 2. Writes a script in Nib’s voice (template mode free; Gemini optional)
-3. Generates voiceover with free Edge TTS
-4. Builds a 9:16 reel from your Nib poses + captions
-5. Optionally posts to Instagram via Graph API
+3. For meals: generates a plated photo via free Pollinations.ai (Gemini image optional; cartoon last resort)
+4. Generates voiceover with free Edge TTS
+5. Builds a 9:16 reel from Nib poses + captions
+6. Optionally posts to Instagram via Graph API
+
+Meal Instagram captions include **ingredients**, **spices**, **detailed how-to steps**, and **macros**. Meal voiceovers are longer (~90–130 words) so Nib walks through spices and cooking clearly.
 
 ## Setup
 
@@ -30,16 +40,28 @@ Extract poses from your character sheets (once):
 
 ## Generate a reel (no post)
 
+Fridge nutrition (default):
+
 ```bash
 .venv/bin/python bot/run_daily.py
+# same as:
+.venv/bin/python bot/run_daily.py --type fridge
 ```
 
-Output lands in `bot/output/<timestamp>/reel.mp4` with `caption.txt`.
+Meal recipe:
 
-## Optional: smarter scripts (free Gemini key)
+```bash
+.venv/bin/python bot/run_daily.py --type meal
+```
+
+Output lands in `bot/output/<timestamp>/reel.mp4` with `caption.txt` (and `plate.png` for meals).
+
+## Optional: smarter scripts + meal plate photos (Gemini)
 
 1. Get a key: https://aistudio.google.com/apikey  
 2. Put it in `bot/.env` as `GEMINI_API_KEY=...`
+
+Gemini (optional) powers punchier voiceovers. Meal plate photos use free [Pollinations.ai](https://pollinations.ai) by default — no paid Gemini image quota needed.
 
 ## Instagram auto-post
 
@@ -75,17 +97,20 @@ Works if Meta can fetch a temporary public URL of your MP4. Use dashboard ID `17
 Post one reel when ready:
 
 ```bash
-.venv/bin/python bot/run_daily.py --post
+.venv/bin/python bot/run_daily.py --type fridge --post
+.venv/bin/python bot/run_daily.py --type meal --post
 # or retry an existing file:
 .venv/bin/python bot/run_daily.py --post-file bot/output/<stamp>/reel.mp4
 ```
 
-## Run every day (GitHub Actions, 1:00 PM JST)
+## Run every day (GitHub Actions)
 
 The bot posts from GitHub Actions so your Mac does not need to stay on.
 
-Workflow: [`.github/workflows/daily-reel.yml`](../.github/workflows/daily-reel.yml)  
-Schedule: `0 4 * * *` UTC (= **1:00 PM JST**)
+| Workflow | Cron (UTC) | JST | Command |
+|----------|------------|-----|---------|
+| [daily-reel.yml](../.github/workflows/daily-reel.yml) | `0 4 * * *` | **1:00 PM** | `--type fridge --post` |
+| [daily-meal-reel.yml](../.github/workflows/daily-meal-reel.yml) | `0 10 * * *` | **7:00 PM** | `--type meal --post` |
 
 ### Required repo secrets
 
@@ -93,7 +118,7 @@ Settings → Secrets and variables → Actions:
 
 - `INSTAGRAM_USER_ID`
 - `INSTAGRAM_ACCESS_TOKEN` (Facebook **Page** token, `EAA…`)
-- `GEMINI_API_KEY` (optional, for smarter scripts)
+- `GEMINI_API_KEY` (recommended — scripts + meal plate photos)
 
 Or set via CLI:
 
@@ -105,12 +130,13 @@ gh secret set GEMINI_API_KEY <<<"..."
 
 ### Manual test run
 
-GitHub → Actions → **Daily Nib Reel** → **Run workflow**
+GitHub → Actions → **Daily Nib Reel** or **Daily Nib Meal Reel** → **Run workflow**
 
 Or:
 
 ```bash
 gh workflow run daily-reel.yml
+gh workflow run daily-meal-reel.yml
 ```
 
 ### Token refresh
@@ -121,9 +147,11 @@ Page access tokens expire (~60 days). Re-generate from Graph API Explorer and up
 
 ```text
 bot/
+  assets/bg/           # fridge_open.png, kitchen.png
   assets/nib/raw/      # your original sheets
   assets/nib/poses/    # auto-cropped poses
-  src/                 # script, voice, video, Instagram
+  data/                # used_topics.json, used_meals.json
+  src/                 # script, voice, video, meal render, Instagram
   output/              # generated reels
   run_daily.py
 ```

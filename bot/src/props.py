@@ -150,6 +150,138 @@ def held_prop(item_key: str, size: int = 260) -> Image.Image:
     elif key == "moon":
         outline_ellipse((50, 50, size - 50, size - 50), (255, 235, 160, 255))
         d.ellipse((100, 40, size - 20, size - 80), fill=(40, 120, 140, 255))
+    elif key == "garlic":
+        outline_ellipse((70, 70, size - 70, size - 50), (245, 240, 220, 255))
+        for dx in (-25, 0, 25):
+            outline_ellipse((cx + dx - 28, cy - 10, cx + dx + 28, cy + 55), (250, 245, 225, 255), 4)
+        d.rectangle((cx - 6, 40, cx + 6, 75), fill=(120, 170, 80, 255))
+    elif key == "honey":
+        outline_round((95, 55, size - 95, size - 30), (255, 180, 40, 255), 18)
+        outline_round((110, 35, size - 110, 70), (200, 140, 40, 255), 10, 4)
+        d.polygon([(cx - 20, 90), (cx + 20, 90), (cx, 140)], fill=(255, 220, 100, 220))
+    elif key == "tomato":
+        outline_ellipse((55, 60, size - 55, size - 40), (230, 55, 55, 255))
+        outline_ellipse((cx - 18, 45, cx + 18, 80), (70, 160, 70, 255), 4)
+        d.ellipse((90, 90, 130, 120), fill=(255, 180, 160, 120))
+    elif key == "cheese":
+        outline_round((50, 80, size - 50, size - 40), (255, 210, 90, 255), 16)
+        d.polygon([(50, 80), (size // 2, 40), (size - 50, 80)], fill=(255, 225, 120, 255))
+        d.line([(50, 80), (size // 2, 40), (size - 50, 80)], fill=(25, 30, 40, 255), width=5)
+        for dx, dy in ((-30, 20), (20, 35), (5, 55)):
+            outline_ellipse((cx + dx - 12, cy + dy - 10, cx + dx + 12, cy + dy + 10), (240, 180, 60, 255), 3)
+    elif key == "tuna":
+        outline_round((55, 70, size - 55, size - 40), (180, 200, 210, 255), 16)
+        outline_round((70, 45, size - 70, 90), (90, 130, 160, 255), 12, 4)
+        d.text((95, 120), "TUNA", font=get_font(32), fill=(40, 60, 80))
+    elif key == "avocado":
+        outline_ellipse((60, 45, size - 60, size - 35), (90, 160, 70, 255))
+        outline_ellipse((95, 85, size - 95, size - 75), (200, 210, 90, 255), 4)
+        outline_ellipse((cx - 22, cy - 10, cx + 22, cy + 35), (90, 55, 30, 255), 4)
+    elif key == "soy":
+        left, right = int(size * 0.32), int(size * 0.68)
+        outline_round((left, int(size * 0.12), right, int(size * 0.9)), (40, 35, 40, 255), 18)
+        outline_round((left + 12, int(size * 0.28), right - 12, int(size * 0.48)), (255, 245, 230, 255), 8, 3)
+        d.text((cx - 22, int(size * 0.55)), "SOY", font=get_font(26), fill=(240, 220, 180))
+    elif key == "tortilla":
+        outline_ellipse((35, 45, size - 35, size - 35), (240, 200, 130, 255))
+        outline_ellipse((70, 80, size - 70, size - 70), (230, 180, 100, 200), 3)
+    elif key == "shrimp":
+        d.arc((40, 50, size - 40, size - 40), 20, 200, fill=(255, 130, 100, 255), width=28)
+        outline_ellipse((size - 110, 55, size - 55, 110), (255, 150, 120, 255), 4)
+        for i in range(4):
+            yy = 90 + i * 28
+            outline_ellipse((70, yy, 130, yy + 22), (255, 160, 130, 255), 3)
+    elif key == "noodles":
+        for i, col in enumerate([(255, 210, 90), (240, 180, 70), (255, 225, 120)]):
+            y0 = 60 + i * 18
+            d.arc((40, y0, size - 40, y0 + 120), 0, 180, fill=col + (255,), width=10)
+        outline_ellipse((50, size - 90, size - 50, size - 35), (230, 200, 140, 255), 4)
+    elif key == "butter":
+        outline_round((55, 90, size - 55, size - 50), (255, 230, 120, 255), 14)
+        outline_round((70, 70, size - 70, 105), (255, 245, 180, 255), 10, 4)
+    elif key == "bread":
+        outline_round((45, 70, size - 45, size - 40), (220, 170, 100, 255), 20)
+        outline_ellipse((55, 45, size - 55, 110), (235, 195, 130, 255), 5)
+        d.ellipse((90, 100, 120, 125), fill=(200, 140, 70, 180))
+        d.ellipse((150, 130, 185, 160), fill=(200, 140, 70, 160))
+    elif key == "cucumber":
+        outline_round((90, 30, size - 90, size - 25), (90, 180, 90, 255), 30)
+        for yy in (70, 120, 170):
+            d.ellipse((110, yy, size - 110, yy + 18), fill=(140, 210, 120, 200))
+    elif key == "salmon":
+        outline_ellipse((40, 80, size - 40, size - 50), (255, 140, 110, 255))
+        d.arc((60, 70, size - 60, size - 40), 200, 340, fill=(255, 180, 150, 255), width=8)
+        outline_ellipse((size - 100, 95, size - 55, 140), (255, 160, 130, 255), 3)
+    elif key == "lemon":
+        outline_ellipse((55, 55, size - 55, size - 45), (255, 230, 70, 255))
+        outline_ellipse((90, 90, size - 90, size - 80), (255, 245, 140, 255), 3)
+        d.rectangle((cx - 5, 40, cx + 5, 65), fill=(100, 160, 60, 255))
+    elif key == "oil":
+        left, right = int(size * 0.34), int(size * 0.66)
+        outline_round((left, int(size * 0.16), right, int(size * 0.88)), (200, 220, 120, 230), 22)
+        outline_round((left + 12, int(size * 0.1), right - 12, int(size * 0.22)), (180, 160, 100, 255), 8, 3)
+        d.polygon(
+            [
+                (left + 20, int(size * 0.35)),
+                (right - 20, int(size * 0.38)),
+                (right - 24, int(size * 0.75)),
+                (left + 24, int(size * 0.78)),
+            ],
+            fill=(230, 240, 150, 160),
+        )
+    elif key == "beef":
+        outline_round((50, 75, size - 50, size - 40), (160, 70, 55, 255), 18)
+        outline_ellipse((80, 100, size - 80, size - 80), (190, 90, 70, 255), 4)
+        d.ellipse((100, 120, 140, 150), fill=(220, 140, 120, 160))
+    elif key == "basil":
+        leaves = [((-20, -5), 50, (60, 150, 70)), ((25, -15), 45, (80, 180, 90)), ((5, 25), 48, (50, 130, 60))]
+        for (dx, dy), rad, col in leaves:
+            outline_ellipse(
+                (cx + dx - rad // 2, cy + dy - rad // 2, cx + dx + rad // 2, cy + dy + rad // 2),
+                col + (255,),
+                4,
+            )
+        d.rectangle((cx - 5, cy + 30, cx + 5, cy + 75), fill=(70, 120, 50, 255))
+    elif key in {"spices", "spice", "paprika", "cumin", "oregano", "ginger", "cinnamon", "chili", "sesame", "vanilla", "sugar"}:
+        # Spice jar / shaker (proportional so size=200 still works)
+        left, right = int(size * 0.30), int(size * 0.70)
+        outline_round((left, int(size * 0.22), right, int(size * 0.88)), (240, 235, 220, 255), 16)
+        outline_round((left + 12, int(size * 0.12), right - 12, int(size * 0.28)), (180, 100, 60, 255), 10, 4)
+        fill = {
+            "paprika": (220, 70, 50),
+            "chili": (200, 40, 40),
+            "cumin": (180, 130, 70),
+            "cinnamon": (140, 80, 40),
+            "oregano": (90, 140, 70),
+            "ginger": (210, 160, 90),
+            "sesame": (230, 210, 160),
+            "vanilla": (245, 230, 190),
+            "sugar": (255, 250, 245),
+        }.get(key, (200, 120, 60))
+        outline_ellipse((left + 18, int(size * 0.42), right - 18, int(size * 0.72)), fill + (255,), 4)
+        d.text((cx - 28, int(size * 0.78)), key[:6].upper(), font=get_font(22), fill=(40, 40, 40))
+    elif key in {"salt", "pepper"}:
+        left, right = int(size * 0.32), int(size * 0.68)
+        outline_round(
+            (left, int(size * 0.15), right, int(size * 0.88)),
+            (245, 245, 245, 255) if key == "salt" else (50, 45, 45, 255),
+            20,
+        )
+        outline_ellipse((left + 16, int(size * 0.2), right - 16, int(size * 0.36)), (200, 200, 200, 255), 3)
+        dots = (30, 30, 30, 255) if key == "salt" else (230, 230, 230, 255)
+        for dx, dy in ((-15, 20), (10, 40), (-5, 55), (20, 60)):
+            d.ellipse((cx + dx, cy + dy, cx + dx + 8, cy + dy + 8), fill=dots)
+        d.text(
+            (cx - 30, int(size * 0.78)),
+            key.upper(),
+            font=get_font(24),
+            fill=(40, 40, 40) if key == "salt" else (240, 240, 240),
+        )
+    elif key == "plate":
+        outline_ellipse((30, 50, size - 30, size - 30), (245, 245, 240, 255))
+        outline_ellipse((70, 90, size - 70, size - 70), (230, 230, 220, 255), 4)
+        outline_ellipse((95, 110, size - 95, size - 95), (255, 180, 100, 255), 4)
+        outline_ellipse((110, 130, size - 110, size - 110), (90, 170, 80, 255), 3)
     else:
         outline_round((55, 55, size - 55, size - 40), (255, 210, 70, 255), 26)
         d.text((cx - 18, cy - 24), "?", font=get_font(64), fill=(40, 40, 40))

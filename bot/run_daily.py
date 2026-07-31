@@ -21,6 +21,12 @@ def main() -> None:
     parser.add_argument("--post", action="store_true", help="Publish to Instagram after generate")
     parser.add_argument("--no-post", action="store_true", help="Never publish (default)")
     parser.add_argument(
+        "--type",
+        choices=("fridge", "meal"),
+        default="fridge",
+        help="Reel type: fridge nutrition (1pm) or meal recipe (7pm). Default: fridge",
+    )
+    parser.add_argument(
         "--post-file",
         type=Path,
         help="Publish an existing MP4 + sibling caption.txt (skip generate)",
@@ -44,8 +50,9 @@ def main() -> None:
     post = True if args.post else False
     if args.no_post:
         post = False
-    result = run_daily(post=post)
+    result = run_daily(post=post, reel_type=args.type)
     print("\nReady:")
+    print(f"  type:    {result.get('reel_type', args.type)}")
     print(f"  video:   {result['video']}")
     print(f"  caption: {result['output_dir']}/caption.txt")
 
