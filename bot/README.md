@@ -18,7 +18,7 @@ Each run:
 3. For meals: generates a plated photo via free Pollinations.ai (Gemini image optional; cartoon last resort)
 4. Generates voiceover with free Edge TTS
 5. Builds a 9:16 reel from Nib poses + captions
-6. Optionally posts to Instagram via Graph API
+6. Optionally posts to Instagram (Graph API) **and** YouTube Shorts (Data API v3)
 
 Meal Instagram captions include **ingredients**, **spices**, **detailed how-to steps**, and **macros**. Meal voiceovers are longer (~90–130 words) so Nib walks through spices and cooking clearly.
 
@@ -118,6 +118,7 @@ Settings → Secrets and variables → Actions:
 
 - `INSTAGRAM_USER_ID`
 - `INSTAGRAM_ACCESS_TOKEN` (Facebook **Page** token, `EAA…`)
+- `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` (see [YouTube Shorts auto-post](#youtube-shorts-auto-post))
 - `GEMINI_API_KEY` (recommended — scripts + meal plate photos)
 
 Or set via CLI:
@@ -125,6 +126,9 @@ Or set via CLI:
 ```bash
 gh secret set INSTAGRAM_USER_ID <<<"178414..."
 gh secret set INSTAGRAM_ACCESS_TOKEN <<<"EAAxxxx..."
+gh secret set YOUTUBE_CLIENT_ID <<<"....apps.googleusercontent.com"
+gh secret set YOUTUBE_CLIENT_SECRET <<<"..."
+gh secret set YOUTUBE_REFRESH_TOKEN <<<"..."
 gh secret set GEMINI_API_KEY <<<"..."
 ```
 
@@ -142,6 +146,48 @@ gh workflow run daily-meal-reel.yml
 ### Token refresh
 
 Page access tokens expire (~60 days). Re-generate from Graph API Explorer and update the `INSTAGRAM_ACCESS_TOKEN` **secret** (and local `bot/.env` if you still test locally).
+
+## YouTube Shorts auto-post
+
+The same video that gets posted as an Instagram Reel is also uploaded as a YouTube Short (title/description get `#Shorts` appended, which is what routes a ≤60s 9:16 upload into the Shorts shelf — there's no separate "Shorts" endpoint).
+
+### One-time setup
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → create/select a project
+2. **APIs & Services → Library** → enable **YouTube Data API v3**
+3. **APIs & Services → OAuth consent screen** → configure it (External is fine; Testing mode works as long as your Google account is added as a test user)
+4. **APIs & Services → Credentials → Create Credentials → OAuth client ID** → Application type **Desktop app** → download the JSON, save it as `bot/client_secret.json`
+5. Run the one-time helper locally (opens a browser to approve upload access for the channel you want the bot to post to):
+
+```bash
+.venv/bin/python bot/get_youtube_refresh_token.py
+```
+
+6. Copy the printed values into `bot/.env`:
+
+```env
+YOUTUBE_CLIENT_ID=....apps.googleusercontent.com
+YOUTUBE_CLIENT_SECRET=...
+YOUTUBE_REFRESH_TOKEN=...
+YOUTUBE_PRIVACY_STATUS=public
+```
+
+7. Delete `bot/client_secret.json` afterward (or keep it out of git — it's already covered by `.gitignore`-worthy secrets, don't commit it).
+
+### Required repo secrets (for GitHub Actions)
+
+Add alongside the Instagram ones:
+
+```bash
+gh secret set YOUTUBE_CLIENT_ID <<<"....apps.googleusercontent.com"
+gh secret set YOUTUBE_CLIENT_SECRET <<<"..."
+gh secret set YOUTUBE_REFRESH_TOKEN <<<"..."
+```
+
+Notes:
+
+- The refresh token doesn't expire from time alone — it stays valid until you revoke it in [Google Account permissions](https://myaccount.google.com/permissions) or leave the project in OAuth "Testing" mode for >7 days without publishing the app (unverified apps in Testing mode expire refresh tokens after 7 days — for a long-running bot, either publish the OAuth consent screen, or keep the app in "Testing" and re-run `get_youtube_refresh_token.py` if it stops working).
+- If either `INSTAGRAM_*` or `YOUTUBE_*` creds are missing, the bot just skips that platform and still posts to the other — no crash.
 
 ## Project layout
 

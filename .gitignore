@@ -8,3 +8,4 @@ bot/.tools/
 *.mp4
 *.mp3
 bot/assets/nib/poses/
+bot/client_secret.json

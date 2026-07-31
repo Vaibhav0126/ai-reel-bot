@@ -31,6 +31,12 @@ FPS = 30
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 INSTAGRAM_USER_ID = os.getenv("INSTAGRAM_USER_ID", "").strip()
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "").strip()
+# YouTube Data API v3 (OAuth2 "installed app" client + a one-time refresh token —
+# see bot/get_youtube_refresh_token.py)
+YOUTUBE_CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID", "").strip()
+YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "").strip()
+YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip()
+YOUTUBE_PRIVACY_STATUS = os.getenv("YOUTUBE_PRIVACY_STATUS", "public").strip()
 # Cute cartoon voice for Nib (override in .env if you want)
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-AnaNeural").strip()
 EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+20%").strip()

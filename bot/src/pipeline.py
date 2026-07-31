@@ -8,8 +8,22 @@ from .instagram import can_post, post_reel
 from .meal_image import generate_meal_image
 from .meal_video import render_meal_reel
 from .poses import extract_poses, list_poses
-from .script_gen import ReelType, generate_script, mark_meal_used, mark_topic_used
+from .script_gen import ReelScript, ReelType, generate_script, mark_meal_used, mark_topic_used
 from .video import render_reel
+from .youtube import can_post as can_post_youtube
+from .youtube import post_short
+
+
+def _youtube_title(script: ReelScript) -> str:
+    hook = (script.hook or script.topic).strip()
+    title = hook if hook.endswith(("!", "?", ".")) else f"{hook}!"
+    title = f"{title} #Shorts"
+    return title[:100]
+
+
+def _youtube_description(script: ReelScript) -> str:
+    hashtags = " ".join(f"#{tag}" for tag in script.hashtags)
+    return f"{script.caption}\n\n{hashtags} #Shorts".strip()
 
 
 def run_daily(post: bool | None = None, reel_type: ReelType = "fridge") -> dict:
@@ -58,6 +72,8 @@ def run_daily(post: bool | None = None, reel_type: ReelType = "fridge") -> dict:
         "caption": script.caption,
         "posted": False,
         "publish_response": None,
+        "youtube_posted": False,
+        "youtube_response": None,
     }
 
     if should_post:
@@ -65,10 +81,35 @@ def run_daily(post: bool | None = None, reel_type: ReelType = "fridge") -> dict:
         if not can_post():
             print("   Skipped: add INSTAGRAM_USER_ID + INSTAGRAM_ACCESS_TOKEN to bot/.env")
         else:
-            resp = post_reel(video_path, script.caption)
-            result["posted"] = True
-            result["publish_response"] = resp
-            print(f"   Posted: {resp}")
+            try:
+                resp = post_reel(video_path, script.caption)
+                result["posted"] = True
+                result["publish_response"] = resp
+                print(f"   Posted: {resp}")
+            except Exception as exc:  # noqa: BLE001
+                result["publish_response"] = {"error": str(exc)}
+                print(f"   Instagram post failed: {exc}")
+
+        print("   Posting to YouTube Shorts…")
+        if not can_post_youtube():
+            print(
+                "   Skipped: add YOUTUBE_CLIENT_ID/SECRET/REFRESH_TOKEN to bot/.env "
+                "(see bot/get_youtube_refresh_token.py)"
+            )
+        else:
+            try:
+                yt_resp = post_short(
+                    video_path,
+                    title=_youtube_title(script),
+                    description=_youtube_description(script),
+                    tags=script.hashtags,
+                )
+                result["youtube_posted"] = True
+                result["youtube_response"] = yt_resp
+                print(f"   Posted: {yt_resp.get('url', yt_resp)}")
+            except Exception as exc:  # noqa: BLE001
+                result["youtube_response"] = {"error": str(exc)}
+                print(f"   YouTube post failed: {exc}")
     else:
         print("3/4 Post skipped (AUTO_POST=false). Review the video first.")
 

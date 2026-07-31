@@ -13,12 +13,16 @@ sys.path.insert(0, str(ROOT))
 from src.instagram import post_reel  # noqa: E402
 from src.pipeline import run_daily  # noqa: E402
 from src.poses import extract_poses  # noqa: E402
+from src.youtube import can_post as can_post_youtube  # noqa: E402
+from src.youtube import post_short  # noqa: E402
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Nib daily reel bot")
     parser.add_argument("--extract-poses", action="store_true", help="Only extract pose PNGs")
-    parser.add_argument("--post", action="store_true", help="Publish to Instagram after generate")
+    parser.add_argument(
+        "--post", action="store_true", help="Publish to Instagram + YouTube Shorts after generate"
+    )
     parser.add_argument("--no-post", action="store_true", help="Never publish (default)")
     parser.add_argument(
         "--type",
@@ -44,7 +48,11 @@ def main() -> None:
         caption = caption_path.read_text() if caption_path.exists() else ""
         print(f"Posting existing video: {video}")
         resp = post_reel(video, caption)
-        print(f"Posted: {resp}")
+        print(f"Posted to Instagram: {resp}")
+        if can_post_youtube():
+            title = (caption.splitlines() or [video.stem])[0].strip()[:95] or video.stem
+            yt_resp = post_short(video, title=f"{title} #Shorts", description=caption)
+            print(f"Posted to YouTube: {yt_resp.get('url', yt_resp)}")
         return
 
     post = True if args.post else False
