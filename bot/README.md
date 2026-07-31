@@ -67,6 +67,10 @@ Gemini (optional) powers punchier voiceovers. Meal plate photos use free [Pollin
 
 Official posting needs a **Professional** Instagram account linked to a **Facebook Page**.
 
+> **Full step-by-step walkthrough (including every gotcha we hit while setting this up):**
+> see [`bot/INSTAGRAM_TOKEN_GUIDE.md`](INSTAGRAM_TOKEN_GUIDE.md). Use that doc whenever generating
+> or renewing the token — the summary below covers the same steps more briefly.
+
 ### Recommended: Facebook Page token (most reliable for local MP4s)
 
 Instagram Login tokens (`IGAA…`) require a public `video_url`. Meta often fails to download free hosts / Cloudflare tunnels. A **Page token** (`EAA…`) can upload the file directly (resumable).
@@ -145,7 +149,9 @@ gh workflow run daily-meal-reel.yml
 
 ### Token refresh
 
-Page access tokens expire (~60 days). Re-generate from Graph API Explorer and update the `INSTAGRAM_ACCESS_TOKEN` **secret** (and local `bot/.env` if you still test locally).
+Page access tokens expire (~60 days). Follow [`bot/INSTAGRAM_TOKEN_GUIDE.md`](INSTAGRAM_TOKEN_GUIDE.md)
+to regenerate it, then update the `INSTAGRAM_ACCESS_TOKEN` **secret** (and local `bot/.env` if you
+still test locally).
 
 ## YouTube Shorts auto-post
 
