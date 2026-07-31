@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+bot/output/
+bot/.tools/
+.DS_Store
+*.mp4
+*.mp3
+bot/assets/nib/poses/
