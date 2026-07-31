@@ -2,8 +2,9 @@ name: Daily Nib Reel
 
 on:
   schedule:
-    # 1:00 PM JST = 04:00 UTC
-    - cron: "0 4 * * *"
+    # ~1:00 PM JST = 04:00 UTC (offset a few minutes to avoid GitHub's
+    # top-of-the-hour scheduler congestion, which can delay/skip :00 crons)
+    - cron: "7 4 * * *"
   workflow_dispatch:
 
 concurrency:
