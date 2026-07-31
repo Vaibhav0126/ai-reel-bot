@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 
 import imageio_ffmpeg
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 from .config import (
     CAPTION_STROKE,
@@ -15,6 +15,7 @@ from .config import (
     VIDEO_HEIGHT,
     VIDEO_WIDTH,
 )
+from .fonts import get_font
 from .horns import fix_horn_colors
 from .poses import list_poses
 from .props import held_prop
@@ -30,20 +31,6 @@ POSE_FOR_BEAT = {
     "extra": "judge_sincere",
     "payoff": "celebrating",
 }
-
-
-def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for path in (
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        "/System/Library/Fonts/Supplemental/Impact.ttf",
-        "/Library/Fonts/Arial Bold.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-    ):
-        try:
-            return ImageFont.truetype(path, size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
 
 
 def _load_pose(path: Path, max_h: int = 900) -> Image.Image:
@@ -101,7 +88,7 @@ def _speech_bubble(frame: Image.Image, text: str, anchor_x: int, anchor_y: int) 
     if not text:
         return
     draw = ImageDraw.Draw(frame, "RGBA")
-    font = _font(44)
+    font = get_font(44)
     words = text.split()
     lines: list[str] = []
     cur = ""

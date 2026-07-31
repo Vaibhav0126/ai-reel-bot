@@ -2,20 +2,9 @@ from __future__ import annotations
 
 import math
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
-
-def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for path in (
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-        "/Library/Fonts/Arial Bold.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-    ):
-        try:
-            return ImageFont.truetype(path, size=size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+from .fonts import get_font
 
 
 def held_prop(item_key: str, size: int = 260) -> Image.Image:
@@ -55,7 +44,7 @@ def held_prop(item_key: str, size: int = 260) -> Image.Image:
     elif key == "creatine":
         outline_round((65, 35, size - 65, size - 30), (40, 45, 60, 255), 20)
         outline_round((85, 85, size - 85, 150), (255, 210, 70, 255), 12, 4)
-        d.text((98, 98), "CREATINE", font=_font(26), fill=(30, 30, 40))
+        d.text((98, 98), "CREATINE", font=get_font(26), fill=(30, 30, 40))
         d.ellipse((100, 170, 140, 210), fill=(255, 255, 255, 50))
     elif key == "water":
         outline_round((100, 25, size - 100, size - 25), (120, 205, 245, 220), 26)
@@ -87,7 +76,7 @@ def held_prop(item_key: str, size: int = 260) -> Image.Image:
     elif key == "frozen":
         outline_round((50, 35, size - 50, size - 30), (70, 185, 230, 255), 24)
         d.rectangle((60, 50, size - 60, 105), fill=(255, 255, 255, 235))
-        d.text((78, 58), "FROZEN", font=_font(32), fill=(30, 90, 140))
+        d.text((78, 58), "FROZEN", font=get_font(32), fill=(30, 90, 140))
         bits = [((-35, 35), (90, 200, 70)), ((25, 20), (255, 130, 50)), ((45, 60), (255, 220, 70)),
                 ((-15, 75), (110, 210, 80)), ((30, 95), (255, 150, 60))]
         for (dx, dy), col in bits:
@@ -119,7 +108,7 @@ def held_prop(item_key: str, size: int = 260) -> Image.Image:
         outline_ellipse((95, 155, 175, 210), (240, 150, 90, 255), 4)
         d.ellipse((85, 120, 110, 140), fill=(255, 230, 180, 200))
         d.rounded_rectangle((85, 95, size - 85, 118), radius=6, fill=(255, 120, 80, 255))
-        d.text((100, 96), "LEFTOVERS", font=_font(18), fill=(255, 255, 255))
+        d.text((100, 96), "LEFTOVERS", font=get_font(18), fill=(255, 255, 255))
     elif key == "tofu":
         outline_round((55, 70, size - 55, size - 40), (255, 255, 245, 255), 18)
         for yy in (125, 165, 205):
@@ -157,13 +146,13 @@ def held_prop(item_key: str, size: int = 260) -> Image.Image:
     elif key == "box":
         outline_round((45, 65, size - 45, size - 35), (255, 140, 70, 255), 16)
         outline_round((55, 80, size - 55, 125), (255, 245, 225, 255), 10, 3)
-        d.text((78, 88), "PROTEIN", font=_font(28), fill=(170, 55, 20))
+        d.text((78, 88), "PROTEIN", font=get_font(28), fill=(170, 55, 20))
     elif key == "moon":
         outline_ellipse((50, 50, size - 50, size - 50), (255, 235, 160, 255))
         d.ellipse((100, 40, size - 20, size - 80), fill=(40, 120, 140, 255))
     else:
         outline_round((55, 55, size - 55, size - 40), (255, 210, 70, 255), 26)
-        d.text((cx - 18, cy - 24), "?", font=_font(64), fill=(40, 40, 40))
+        d.text((cx - 18, cy - 24), "?", font=get_font(64), fill=(40, 40, 40))
 
     # Soft drop shadow under prop
     shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
