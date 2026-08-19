@@ -45,8 +45,11 @@ EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-GuyNeural").strip()
 EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "-8%").strip()
 EDGE_TTS_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz").strip()
 AUTO_POST = os.getenv("AUTO_POST", "false").strip().lower() in {"1", "true", "yes"}
-# Target length for curiosity-fact reels (seconds of video)
-TARGET_REEL_SECONDS = 30.0
+# Video length follows the voiceover (plus a short tail). Do not pad to a
+# fixed 30s — Instagram/YouTube loop the file, so leftover silence looks
+# like the reel restarting. Cap under 60s so YouTube still treats it as a Short.
+MIN_REEL_SECONDS = 6.0
+MAX_REEL_SECONDS = 59.5
 
 # Fridge-goblin palette
 BG_TOP = (28, 52, 64)

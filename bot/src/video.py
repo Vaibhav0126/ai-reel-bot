@@ -8,7 +8,7 @@ from pathlib import Path
 import imageio_ffmpeg
 from PIL import Image, ImageDraw, ImageFilter
 
-from .config import ACCENT, FACT_BG, FPS, TARGET_REEL_SECONDS, VIDEO_HEIGHT, VIDEO_WIDTH
+from .config import ACCENT, FACT_BG, FPS, MAX_REEL_SECONDS, MIN_REEL_SECONDS, VIDEO_HEIGHT, VIDEO_WIDTH
 from .fonts import get_font
 from .horns import fix_horn_colors
 from .poses import list_poses
@@ -73,7 +73,8 @@ def _object_sticker(img: Image.Image, max_size: int) -> Image.Image:
     return rgba.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
-CAPTION_TOP = 64
+# Sit below iPhone Dynamic Island + Instagram Reels top chrome (username / audio).
+CAPTION_TOP = 210
 CAPTION_FONT_SIZE = 58
 CAPTION_STROKE = 6
 CAPTION_LINE_H = 78
@@ -176,8 +177,7 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
     final_path = out_dir / "reel.mp4"
 
     voice: VoiceResult = generate_voiceover(script.voiceover, audio_path)
-    duration = max(TARGET_REEL_SECONDS, voice.duration + 0.35)
-    duration = min(duration, 40.0)
+    duration = max(MIN_REEL_SECONDS, min(voice.duration + 0.35, MAX_REEL_SECONDS))
 
     beats = script.beats or []
     beat_texts = [(f"beat_{i}", b.get("spoken") or "") for i, b in enumerate(beats)]
@@ -201,7 +201,7 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
     for i, path_str in enumerate(script.beat_image_paths):
         p = Path(path_str)
         if p.exists():
-            stickers[f"beat_{i}"] = _object_sticker(Image.open(p), 720)
+            stickers[f"beat_{i}"] = _object_sticker(Image.open(p), 640)
 
     base = _still_base()
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
