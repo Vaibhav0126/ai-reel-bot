@@ -104,8 +104,8 @@ The bot posts from GitHub Actions so your Mac does not need to stay on.
 
 | Workflow | Cron (UTC) | JST | Command |
 |----------|------------|-----|---------|
-| [daily-reel.yml](../.github/workflows/daily-reel.yml) | `7 4 * * *` | **1:00 PM** | `--type fact --post` |
-| [daily-meal-reel.yml](../.github/workflows/daily-meal-reel.yml) | `9 10 * * *` | **7:00 PM** | `--type fact --post` |
+| [daily-fact-reel.yml](../.github/workflows/daily-fact-reel.yml) | `7 4 * * *` | **1:00 PM** | `--type fact --post` |
+| same workflow | `9 10 * * *` | **7:00 PM** | `--type fact --post` |
 
 ### Required repo secrets
 
@@ -129,13 +129,12 @@ gh secret set GEMINI_API_KEY <<<"..."
 
 ### Manual test run
 
-GitHub → Actions → **Daily Nib Reel** or **Daily Nib Meal Reel** → **Run workflow**
+GitHub → Actions → **Daily Nib Fact Reel** → **Run workflow**
 
 Or:
 
 ```bash
-gh workflow run daily-reel.yml
-gh workflow run daily-meal-reel.yml
+gh workflow run daily-fact-reel.yml
 ```
 
 ### Token refresh

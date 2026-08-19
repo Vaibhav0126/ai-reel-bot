@@ -73,7 +73,7 @@ Every run, fully unattended, does all of the following:
 | **State persistence** | Flat JSON file (`bot/data/used_facts.json`) committed back to git by the workflow | Prevents repeating the same fact until the whole pool cycles |
 | **Fonts** | Bundled `Roboto-Bold.ttf` with system-font fallback chain | Guarantees consistent on-video text rendering in CI (headless Linux runners have no fonts otherwise) |
 
-No database, no backend server, and no paid infrastructure are required — the entire system is a Python CLI plus two GitHub Actions workflows.
+No database, no backend server, and no paid infrastructure are required — the entire system is a Python CLI plus one GitHub Actions workflow.
 
 ---
 
@@ -169,8 +169,7 @@ runner) knows what has already been posted.
 ```text
 AI Reel bot/
 ├── .github/workflows/
-│   ├── daily-reel.yml         # Cron: fact reel @ 1PM JST (04:00 UTC)
-│   └── daily-meal-reel.yml    # Cron: fact reel @ 7PM JST (10:00 UTC)
+│   └── daily-fact-reel.yml    # Cron: fact reel @ 1PM and 7PM JST
 ├── bot/
 │   ├── run_daily.py           # CLI entrypoint (argparse)
 │   ├── get_youtube_refresh_token.py  # One-time OAuth helper for YouTube
@@ -324,18 +323,18 @@ Retry publishing an already-rendered video:
 
 ## Daily automation (GitHub Actions)
 
-Two independent scheduled workflows keep the account posting without any machine staying online:
+One scheduled workflow keeps the account posting twice a day without any machine staying online:
 
 | Workflow | Cron (UTC) | Local (JST) | Command run |
 |---|---|---|---|
-| [`daily-reel.yml`](.github/workflows/daily-reel.yml) | `7 4 * * *` | 1:00 PM | `python bot/run_daily.py --type fact --post` |
-| [`daily-meal-reel.yml`](.github/workflows/daily-meal-reel.yml) | `9 10 * * *` | 7:00 PM | `python bot/run_daily.py --type fact --post` |
+| [`daily-fact-reel.yml`](.github/workflows/daily-fact-reel.yml) | `7 4 * * *` | 1:00 PM | `python bot/run_daily.py --type fact --post` |
+| same workflow | `9 10 * * *` | 7:00 PM | `python bot/run_daily.py --type fact --post` |
 
-Each workflow: checks out the repo → sets up Python 3.12 with pip caching → installs
+The workflow: checks out the repo → sets up Python 3.12 with pip caching → installs
 `bot/requirements.txt` → runs the pipeline with secrets injected as env vars → commits the updated
 `used_facts.json` ledger back to `main` so state survives across runs on
-ephemeral runners. Both can also be triggered manually via `workflow_dispatch`
-(*Actions → Run workflow*, or `gh workflow run daily-reel.yml`).
+ephemeral runners. It can also be triggered manually via `workflow_dispatch`
+(*Actions → Daily Nib Fact Reel → Run workflow*, or `gh workflow run daily-fact-reel.yml`).
 
 **Required repo secrets** (Settings → Secrets and variables → Actions):
 `INSTAGRAM_USER_ID`, `INSTAGRAM_ACCESS_TOKEN`, `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`,
