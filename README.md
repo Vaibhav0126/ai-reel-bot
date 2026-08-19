@@ -1,12 +1,12 @@
-# 🥬 Nib the Fridge Goblin — AI Reel Bot
+# 🥬 Nib — AI Reel Bot
 
 A fully automated content pipeline that writes, voices, animates, and publishes short-form
-vertical videos (Instagram Reels + YouTube Shorts) starring **Nib**, a cartoon "fridge goblin"
-mascot — twice a day, every day, with zero manual work.
+vertical videos (Instagram Reels + YouTube Shorts) starring **Nib**, a cartoon mascot who
+**dictates curiosity facts** — twice a day, every day, with zero manual work.
 
 Live account: [@nibthefridgegoblin](https://instagram.com/nibthefridgegoblin)
 
-> Give it a topic pool and a character sheet, and it will keep generating unique,
+> Give it a fact pool and a character sheet, and it will keep generating unique,
 > voiced, captioned, edited 9:16 videos and auto-posting them on a schedule — forever —
 > running entirely on GitHub Actions' free tier.
 
@@ -34,22 +34,24 @@ Live account: [@nibthefridgegoblin](https://instagram.com/nibthefridgegoblin)
 
 ## What it does
 
-The bot runs two distinct daily reels, each a self-contained "episode":
+The bot runs the **same curiosity-fact format twice a day**. Each post is a self-contained episode
+in Nib's voice: a "Do you know…" hook, punchy beats, huge on-screen captions, and cartoon images
+that swap with the line — on a **still color background** (no fridge or kitchen scene photos).
 
-| Type | Schedule (JST) | Cron (UTC) | Content |
+| Slot | Schedule (JST) | Cron (UTC) | Content |
 |------|-----------------|------------|---------|
-| **fridge** | 1:00 PM | `7 4 * * *` | A "Do you know…" curiosity hook about a food item found in Nib's fridge, plus a nutrition tip |
-| **meal** | 7:00 PM | `9 10 * * *` | A quick, easy recipe cooked step-by-step in Nib's kitchen, ending on a photoreal plated dish |
+| **morning** | 1:00 PM | `7 4 * * *` | Unused fact from `facts.py` (category rotated vs last post) |
+| **evening** | 7:00 PM | `9 10 * * *` | Another unused fact, same renderer |
 
 Every run, fully unattended, does all of the following:
 
-1. **Picks** an unused topic/meal from a content bank (cycles once exhausted — no repeats)
+1. **Picks** an unused curiosity fact from a content bank (animals, food, psychology / dark triad, body, nature, weird science) — cycles once exhausted
 2. **Writes a script** in Nib's voice (Gemini LLM if configured, deterministic template as a free fallback)
-3. **Generates a plated food photo** for meal reels (Pollinations.ai free image API → Gemini image → hand-drawn cartoon fallback)
+3. **Generates cartoon beat images** (Pollinations.ai free image API → Gemini image → geometric fallback)
 4. **Synthesizes voiceover audio** with word-level timing via Microsoft Edge's free neural TTS
-5. **Renders a 1080×1920 (9:16) video** frame-by-frame with Pillow, syncing character poses, speech bubbles, animated props, and recipe UI overlays to the exact voice timing, then muxes audio+video with FFmpeg
+5. **Renders a 1080×1920 (9:16) video** frame-by-frame with Pillow: still backdrop, centered Nib, per-beat illustration, large top captions synced to speech, then muxes audio+video with FFmpeg
 6. **Publishes** the finished MP4 to Instagram Reels (Graph API) **and** YouTube Shorts (Data API v3) — skipping any platform that isn't configured, without failing the run
-7. **Commits** the "already used" topic/meal ledger back to the repo so the next run doesn't repeat itself
+7. **Commits** the "already used" fact ledger back to the repo so the next run doesn't repeat itself
 
 ---
 
@@ -60,7 +62,7 @@ Every run, fully unattended, does all of the following:
 | **Language / runtime** | Python 3.12 | Entire pipeline |
 | **Script writing (LLM)** | Google Gemini API (`gemini-2.0-flash` family, JSON mode) | Generates punchy, on-character voiceover scripts; falls back to hand-written templates if no API key |
 | **Text-to-speech** | [`edge-tts`](https://github.com/rany2/edge-tts) (Microsoft Edge neural voices, free, no API key) | Voiceover audio + word/sentence boundary timestamps for perfect caption/animation sync |
-| **AI image generation** | [Pollinations.ai](https://pollinations.ai) (Flux model, free, no key) → Gemini image models (`gemini-2.5-flash-image`, optional) | Photoreal "plated meal" hero shot for meal reels |
+| **AI image generation** | [Pollinations.ai](https://pollinations.ai) (Flux model, free, no key) → Gemini image models (`gemini-2.5-flash-image`, optional) | Cartoon illustrations for each fact beat |
 | **Image compositing / rendering** | [Pillow (PIL)](https://python-pillow.org/) + [NumPy](https://numpy.org/) | Character cutout/masking, color correction, speech bubbles, checklists, recipe cards, Ken Burns pans, frame compositing |
 | **Video/audio encoding** | [FFmpeg](https://ffmpeg.org/) via [`imageio-ffmpeg`](https://github.com/imageio/imageio-ffmpeg) | Streams raw RGB frames + the TTS track into a single H.264/AAC MP4 (piped, not written frame-by-frame to disk) |
 | **HTTP client** | [`httpx`](https://www.python-httpx.org/) | All REST calls: Gemini, Pollinations, Instagram Graph API, file-hosting fallbacks |
@@ -68,7 +70,7 @@ Every run, fully unattended, does all of the following:
 | **YouTube publishing** | **YouTube Data API v3** via `google-api-python-client` + `google-auth-oauthlib` (OAuth2 installed-app flow, refresh-token based) | Auto-uploads the same MP4 as a YouTube Short (`#Shorts` tag routes it to the Shorts shelf) |
 | **Config / secrets** | `python-dotenv` (local `.env`) + **GitHub Actions Secrets** (production) | Keeps API keys and tokens out of source control |
 | **Scheduling / CI/CD** | **GitHub Actions** (`schedule` cron triggers + `workflow_dispatch`) | Runs the whole pipeline twice a day on GitHub's hosted runners — no server, no always-on Mac required |
-| **State persistence** | Flat JSON files (`bot/data/used_topics.json`, `used_meals.json`) committed back to git by the workflow | Prevents repeating the same topic/meal until the whole pool cycles |
+| **State persistence** | Flat JSON file (`bot/data/used_facts.json`) committed back to git by the workflow | Prevents repeating the same fact until the whole pool cycles |
 | **Fonts** | Bundled `Roboto-Bold.ttf` with system-font fallback chain | Guarantees consistent on-video text rendering in CI (headless Linux runners have no fonts otherwise) |
 
 No database, no backend server, and no paid infrastructure are required — the entire system is a Python CLI plus two GitHub Actions workflows.
@@ -80,25 +82,19 @@ No database, no backend server, and no paid infrastructure are required — the 
 ```mermaid
 flowchart TD
     A[GitHub Actions cron<br/>04:00 UTC / 10:00 UTC] --> B[run_daily.py]
-    B --> C{reel_type}
-    C -->|fridge| D[pick_story from topics.py]
-    C -->|meal| E[pick_meal from meals.py]
-    D --> F[script_gen.py<br/>Gemini LLM or template]
-    E --> F
-    F -->|meal only| G[meal_image.py<br/>Pollinations → Gemini → cartoon]
+    B --> C[pick_fact from facts.py]
+    C --> F[script_gen.py<br/>Gemini LLM or template]
+    F --> G[fact_image.py<br/>Pollinations → Gemini → shape fallback]
     F --> H[tts.py<br/>edge-tts voiceover + word timings]
     G --> H
-    H --> I[align_script_beats<br/>maps script beats → real audio seconds]
-    I --> J{reel_type}
-    J -->|fridge| K[video.py<br/>fridge scene renderer]
-    J -->|meal| L[meal_video.py<br/>kitchen scene renderer]
+    H --> I[align_script_beats<br/>maps spoken beats → real audio seconds]
+    I --> K[video.py<br/>still BG + Nib + beat art + top captions]
     K --> M[FFmpeg mux<br/>raw RGB frames + AAC audio → reel.mp4]
-    L --> M
     M --> N[instagram.py<br/>Graph API publish]
     M --> O[youtube.py<br/>Data API v3 upload]
-    N --> P[mark topic/meal as used]
+    N --> P[mark fact as used]
     O --> P
-    P --> Q[git commit + push<br/>used_topics.json / used_meals.json]
+    P --> Q[git commit + push<br/>used_facts.json]
 ```
 
 ---
@@ -113,45 +109,41 @@ character poses from the raw multi-pose character sheets in `bot/assets/nib/raw/
 connected-component analysis (`cutout.py`), so the render step always has art to work with.
 
 ### 2. Script generation (`script_gen.py`)
-- A topic (`fridge`) or meal (`meal`) is randomly chosen from a pool, excluding IDs already
-  marked "used" in `bot/data/used_topics.json` / `used_meals.json`. Once the whole pool has been
-  used, the ledger resets and the cycle starts over.
+- An unused fact is randomly chosen from `facts.py`, preferring a **different category** than the
+  last posted fact. IDs already in `bot/data/used_facts.json` are skipped. Once the whole pool has
+  been used, the ledger resets and the cycle starts over.
 - If `GEMINI_API_KEY` is set, the bot asks Gemini (tries 5 model fallbacks) for a JSON-structured
-  script: hook → discovery → reaction → benefit → extra tip → payoff (fridge), or
-  hook → ingredients → spices → cooking steps → benefit → payoff (meal), with strict word-count
-  and tone rules ("playful fridge-goblin energy", no medical advice, first-person).
-- If Gemini is unavailable/unset/fails, a deterministic template stitches the same beats together
-  from hand-written copy in `topics.py` / `meals.py` — the pipeline **never** hard-fails on a
-  missing API key.
-- A rich Instagram **caption** (ingredients, spice amounts, numbered steps, macros) is generated
-  separately from the spoken voiceover so the caption always matches the real meal data.
+  script: 4–5 beats of spoken line + short on-screen caption + cartoon `image_prompt`, ~45–70 words,
+  starting with "Do you know".
+- If Gemini is unavailable/unset/fails, a deterministic template uses the hand-written seed copy —
+  the pipeline **never** hard-fails on a missing API key.
+- The Instagram **caption** is a title + recap + hashtags, generated separately from the voiceover.
 
-### 3. Meal photo generation (`meal_image.py`, meal reels only)
-A 3-tier fallback chain produces the "plated meal" hero image, always preserving its native
-aspect ratio (never stretched to 9:16):
+### 3. Beat image generation (`fact_image.py`)
+A 3-tier fallback chain produces one square cartoon illustration per beat (Nib is **not** in the
+prompt — he is composited from pose sheets):
 1. **Pollinations.ai** (free, no key, Flux model) — tried first
 2. **Gemini image models** (`gemini-2.5-flash-image` etc.) — only if a `GEMINI_API_KEY` exists and Pollinations fails
-3. **Hand-drawn cartoon plate** — procedurally composed from the same cartoon prop icons used elsewhere in the video, guaranteeing the pipeline *always* produces an image even fully offline of paid APIs
+3. **Geometric sticker** — guarantees the pipeline *always* produces an image even fully offline
 
 ### 4. Voiceover synthesis (`tts.py`)
 - `edge-tts` streams the script text through a free Microsoft neural voice (default
   `en-US-AnaNeural`, configurable rate/pitch) and captures **WordBoundary**/**SentenceBoundary**
   events as it synthesizes — giving millisecond-accurate timestamps for every spoken word, not just
   an estimated guess.
-- `align_script_beats()` then maps each script "beat" (hook, ingredients, cook step, etc.) onto the
-  real timestamp where those words are actually spoken, so on-screen captions/animations/checklists
-  never drift out of sync with the audio — a common failure mode in naive TTS+video pipelines.
+- `align_script_beats()` then maps each spoken beat onto the real timestamp where those words are
+  actually spoken, so on-screen captions stay in sync with the audio.
 
-### 5. Video rendering (`video.py` / `meal_video.py`)
-Both renderers work the same way: a **manual FFmpeg pipe**, not a video-editing library.
-- For every frame (30 FPS, up to 45s fridge / 75s meal), the code:
-  - Draws a Ken-Burns-panned background (fridge interior or kitchen)
-  - Selects the correct character pose for the current speech "beat" from a pose-cache
-  - Composites Nib (cutout from character sheets, soft shadow, bounce/sway animation, horn-color correction) on top
-  - For fridge reels: pops in a cartoon "held prop" (procedurally drawn per food item in `props.py`) synced to the discovery beat, plus a bubble-tail speech bubble with wrapped text
-  - For meal reels: shows a progress-dot chapter header, an animated ingredient/spice checklist that reveals row-by-row, a numbered "Step X of N" recipe card during cooking, a "why it works" card, and finally a full-bleed reveal of the plated photo with a save/CTA overlay
-  - Encodes the raw RGB frame bytes and pipes them directly into an FFmpeg subprocess (`stdin`), which simultaneously muxes in the AAC-encoded voice track — this avoids ever writing thousands of intermediate PNG frames to disk
-- Output: `reel.mp4` — H.264 video (yuv420p, level 4.0) + AAC 48kHz stereo audio, `+faststart` for streaming — the exact spec Instagram/YouTube expect.
+### 5. Video rendering (`video.py`)
+The renderer uses a **manual FFmpeg pipe**, not a video-editing library.
+- For every frame (30 FPS, up to 45s), the code:
+  - Fills a **still** muted-indigo background (no Ken Burns, no fridge/kitchen photos)
+  - Selects the correct character pose for the current speech beat
+  - Composites Nib (cutout from character sheets, soft shadow, bounce/sway, horn-color correction) centered near the bottom
+  - Pops in the beat's cartoon illustration above Nib
+  - Draws large white top captions (2–6 words) from the beat `caption`, not the full spoken line
+  - Encodes raw RGB frame bytes into an FFmpeg subprocess (`stdin`), muxing the AAC voice track
+- Output: `reel.mp4` — H.264 video (yuv420p, level 4.0) + AAC 48kHz stereo audio, `+faststart`
 
 ### 6. Publishing
 - **Instagram** (`instagram.py`): detects whether the configured token is a Facebook **Page** token
@@ -166,7 +158,7 @@ Both renderers work the same way: a **manual FFmpeg pipe**, not a video-editing 
   still posts, and the run is not marked as failed.
 
 ### 7. State persistence
-The used topic/meal ID is appended to its ledger file. The GitHub Actions workflow then commits
+The used fact ID is appended to `bot/data/used_facts.json`. The GitHub Actions workflow then commits
 and pushes that ledger back to the repository so the next scheduled run (potentially on a fresh
 runner) knows what has already been posted.
 
@@ -177,8 +169,8 @@ runner) knows what has already been posted.
 ```text
 AI Reel bot/
 ├── .github/workflows/
-│   ├── daily-reel.yml         # Cron: fridge reel @ 1PM JST (04:00 UTC)
-│   └── daily-meal-reel.yml    # Cron: meal reel @ 7PM JST (10:00 UTC)
+│   ├── daily-reel.yml         # Cron: fact reel @ 1PM JST (04:00 UTC)
+│   └── daily-meal-reel.yml    # Cron: fact reel @ 7PM JST (10:00 UTC)
 ├── bot/
 │   ├── run_daily.py           # CLI entrypoint (argparse)
 │   ├── get_youtube_refresh_token.py  # One-time OAuth helper for YouTube
@@ -187,28 +179,24 @@ AI Reel bot/
 │   ├── INSTAGRAM_TOKEN_GUIDE.md      # Deep-dive token setup/renewal walkthrough
 │   ├── README.md              # Bot-specific quick-start docs
 │   ├── assets/
-│   │   ├── bg/                 # fridge_open.png, kitchen.png backgrounds
+│   │   ├── bg/                 # unused scene photos (fact reels use a still color)
 │   │   ├── fonts/               # Bundled Roboto-Bold.ttf (for headless CI)
 │   │   └── nib/
 │   │       ├── raw/            # Original multi-pose character sheets
 │   │       └── poses/          # Auto-cropped individual pose PNGs (generated)
 │   ├── data/
-│   │   ├── used_topics.json     # Fridge-reel "already posted" ledger
-│   │   └── used_meals.json      # Meal-reel "already posted" ledger
+│   │   └── used_facts.json      # "already posted" fact ledger
 │   ├── output/                  # Generated reels land here: <timestamp>/reel.mp4
 │   └── src/
 │       ├── config.py            # Env loading, paths, palette, video constants
-│       ├── topics.py            # Fridge nutrition content bank
-│       ├── meals.py             # Recipe content bank (ingredients/spices/steps/macros)
+│       ├── facts.py             # Curiosity-fact content bank
 │       ├── script_gen.py        # LLM + template script writer, caption formatting
-│       ├── meal_image.py        # Plated-meal photo generation (3-tier fallback)
+│       ├── fact_image.py        # Per-beat cartoon image generation (3-tier fallback)
 │       ├── tts.py               # edge-tts voiceover + word-timing alignment
-│       ├── video.py             # Fridge-scene frame-by-frame renderer + FFmpeg pipe
-│       ├── meal_video.py        # Kitchen-scene renderer (checklists, step cards)
+│       ├── video.py             # Still-BG fact renderer + FFmpeg pipe
 │       ├── poses.py             # Character sheet → individual pose extraction
 │       ├── cutout.py            # Background removal (flood-fill from edges)
 │       ├── horns.py             # Color-correction for mis-tinted character art
-│       ├── props.py             # Procedurally drawn cartoon food/spice icons
 │       ├── fonts.py             # Cross-platform bold font loader with fallbacks
 │       ├── instagram.py         # Graph API Reels publishing (2 upload strategies)
 │       ├── youtube.py           # YouTube Data API v3 Shorts upload
@@ -220,13 +208,11 @@ AI Reel bot/
 ## How each piece works
 
 <details>
-<summary><strong>Content banks (<code>topics.py</code> / <code>meals.py</code>)</strong></summary>
+<summary><strong>Content bank (<code>facts.py</code>)</strong></summary>
 
-Plain Python lists of dicts — no database. Each **topic** (fridge item) has a hook, discovery
-line, reaction, benefit, extra tip, payoff, and approximate nutrition facts. Each **meal** has a
-hook, ingredients (with cartoon-icon keys + amounts), spices (with amounts), a numbered list of
-cooking steps, a benefit, payoff, macros, and a text-to-image `plate_prompt`. Adding new content is
-as simple as appending a new dict — no code changes required elsewhere.
+Plain Python list of dicts — no database. Each **fact** has an id, category, title, and 4–5 beats
+(`spoken`, `caption`, `image_prompt`). Categories rotate so consecutive posts are less likely to
+repeat the same bucket. Adding new content is as simple as appending a new dict.
 </details>
 
 <details>
@@ -246,8 +232,8 @@ The mascot "Nib" is drawn once as multi-pose reference sheets (`assets/nib/raw/`
 <details>
 <summary><strong>Speech/beat synchronization</strong></summary>
 
-`tts.py`'s `align_script_beats()` takes the script's logical sections (e.g. `hook`, `find`,
-`react`, `fact`) and greedily locates their words inside the real Edge-TTS word-timing stream
+`tts.py`'s `align_script_beats()` takes each beat's spoken line and greedily locates those words
+inside the real Edge-TTS word-timing stream
 (exact match → fuzzy 3-word match → first-word match, in that priority order), so even if the LLM's
 returned text doesn't 100% match what TTS "hears," captions stay reasonably in sync. Beat end-times
 are stretched forward to the next beat's start for continuous coverage with no dead gaps.
@@ -314,17 +300,18 @@ when keys are missing:
 Generate a reel without posting:
 
 ```bash
-.venv/bin/python bot/run_daily.py                # fridge reel (default)
-.venv/bin/python bot/run_daily.py --type meal     # meal reel
+.venv/bin/python bot/run_daily.py                # fact reel (default)
+.venv/bin/python bot/run_daily.py --type fact
 ```
 
-Output lands in `bot/output/<timestamp>/` as `reel.mp4` + `caption.txt` (+ `plate.png` for meals).
+`--type fridge` and `--type meal` still work; they map to the same fact format.
+
+Output lands in `bot/output/<timestamp>/` as `reel.mp4` + `caption.txt` + `beat_*.png`.
 
 Generate **and** publish immediately:
 
 ```bash
-.venv/bin/python bot/run_daily.py --type fridge --post
-.venv/bin/python bot/run_daily.py --type meal --post
+.venv/bin/python bot/run_daily.py --type fact --post
 ```
 
 Retry publishing an already-rendered video:
@@ -341,12 +328,12 @@ Two independent scheduled workflows keep the account posting without any machine
 
 | Workflow | Cron (UTC) | Local (JST) | Command run |
 |---|---|---|---|
-| [`daily-reel.yml`](.github/workflows/daily-reel.yml) | `7 4 * * *` | 1:00 PM | `python bot/run_daily.py --type fridge --post` |
-| [`daily-meal-reel.yml`](.github/workflows/daily-meal-reel.yml) | `9 10 * * *` | 7:00 PM | `python bot/run_daily.py --type meal --post` |
+| [`daily-reel.yml`](.github/workflows/daily-reel.yml) | `7 4 * * *` | 1:00 PM | `python bot/run_daily.py --type fact --post` |
+| [`daily-meal-reel.yml`](.github/workflows/daily-meal-reel.yml) | `9 10 * * *` | 7:00 PM | `python bot/run_daily.py --type fact --post` |
 
 Each workflow: checks out the repo → sets up Python 3.12 with pip caching → installs
 `bot/requirements.txt` → runs the pipeline with secrets injected as env vars → commits the updated
-`used_topics.json`/`used_meals.json` ledger back to `main` so state survives across runs on
+`used_facts.json` ledger back to `main` so state survives across runs on
 ephemeral runners. Both can also be triggered manually via `workflow_dispatch`
 (*Actions → Run workflow*, or `gh workflow run daily-reel.yml`).
 
@@ -381,9 +368,9 @@ appending `#Shorts` to the title/description — there's no separate "Shorts" up
 
 ## Content & anti-repetition system
 
-`bot/data/used_topics.json` and `bot/data/used_meals.json` are simple JSON arrays of content IDs
+`bot/data/used_facts.json` is a simple JSON array of fact IDs
 that have already been posted. Each run:
-1. Filters the content bank down to unused IDs
+1. Filters the content bank down to unused IDs (and prefers a new category vs the last post)
 2. Randomly picks one
 3. Marks it used and appends it to the ledger (trimmed to the last 200 entries)
 4. If the entire pool has been exhausted, the ledger resets and the cycle restarts
@@ -417,14 +404,14 @@ transparent PNGs in `bot/assets/nib/poses/`, ready for the renderer to composite
   free/local fallbacks or are silently skipped — the bot can run start-to-finish on zero API keys
   and zero dollars, producing a local MP4 you can post manually.
 - **Real audio timing drives the video, not the other way around.** Beat/caption sync is derived
-  from actual TTS word-boundary events, not fixed estimated durations — this is what keeps
-  captions from drifting on longer meal voiceovers (~90–130 words).
+  from actual TTS word-boundary events, not fixed estimated durations.
 - **Frames are piped, never written to disk.** The renderer streams raw RGB bytes directly into
   FFmpeg's stdin, keeping memory bounded and avoiding thousands of temp PNG files per render.
   Audio is encoded to AAC @ 48kHz because Instagram/YouTube reject some of edge-tts's native 24kHz
   output otherwise.
-- **Image/aspect ratio is never distorted.** Plated meal photos keep their native aspect ratio and
-  are composited with a blurred cover-fill background instead of being stretched to fit 9:16.
+- **Nib is never AI-generated.** Beat images are cartoon props/scenes only; the mascot is always
+  composited from the pose sheets so he stays on-model.
+- **Still background.** Fact reels use a flat color — no Ken Burns scene photos.
 - **CI-safe fonts.** A bundled `Roboto-Bold.ttf` avoids relying on system fonts that don't exist on
   headless Ubuntu GitHub-hosted runners.
 - **Token type is auto-detected.** `instagram.py` picks the correct Graph API host and upload

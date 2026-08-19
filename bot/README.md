@@ -1,26 +1,24 @@
-# Nib the Fridge Goblin — Daily Reel Bot
+# Nib — Daily Fact Reel Bot
 
 Automated pipeline for [@nibthefridgegoblin](https://instagram.com/nibthefridgegoblin).
 
 ## What it does
 
-Two daily reel types:
+Two daily **curiosity-fact** reels (same format both times):
 
-| Type | Schedule (JST) | Content |
+| Slot | Schedule (JST) | Content |
 |------|----------------|---------|
-| **fridge** | 1:00 PM | Fridge-find nutrition tip in front of the open fridge |
-| **meal** | 7:00 PM | Quick easy delicious meal in the kitchen — animated ingredients + plated finale |
+| morning | 1:00 PM | Nib tells a fact (animals, food, psychology, body, nature, science) |
+| evening | 7:00 PM | Another unused fact, category rotated vs the last post |
 
 Each run:
 
-1. Picks a topic/meal (no repeats until the list cycles)
+1. Picks an unused fact (no repeats until the list cycles)
 2. Writes a script in Nib’s voice (template mode free; Gemini optional)
-3. For meals: generates a plated photo via free Pollinations.ai (Gemini image optional; cartoon last resort)
+3. Generates cartoon images per beat via free Pollinations.ai (Gemini image optional; shape last resort)
 4. Generates voiceover with free Edge TTS
-5. Builds a 9:16 reel from Nib poses + captions
+5. Builds a 9:16 reel: still color BG + centered Nib + beat art + huge top captions
 6. Optionally posts to Instagram (Graph API) **and** YouTube Shorts (Data API v3)
-
-Meal Instagram captions include **ingredients**, **spices**, **detailed how-to steps**, and **macros**. Meal voiceovers are longer (~90–130 words) so Nib walks through spices and cooking clearly.
 
 ## Setup
 
@@ -40,28 +38,22 @@ Extract poses from your character sheets (once):
 
 ## Generate a reel (no post)
 
-Fridge nutrition (default):
-
 ```bash
 .venv/bin/python bot/run_daily.py
 # same as:
-.venv/bin/python bot/run_daily.py --type fridge
+.venv/bin/python bot/run_daily.py --type fact
 ```
 
-Meal recipe:
+`--type fridge` / `--type meal` map to the same fact format.
 
-```bash
-.venv/bin/python bot/run_daily.py --type meal
-```
+Output lands in `bot/output/<timestamp>/reel.mp4` with `caption.txt` and `beat_*.png`.
 
-Output lands in `bot/output/<timestamp>/reel.mp4` with `caption.txt` (and `plate.png` for meals).
-
-## Optional: smarter scripts + meal plate photos (Gemini)
+## Optional: smarter scripts + beat images (Gemini)
 
 1. Get a key: https://aistudio.google.com/apikey  
 2. Put it in `bot/.env` as `GEMINI_API_KEY=...`
 
-Gemini (optional) powers punchier voiceovers. Meal plate photos use free [Pollinations.ai](https://pollinations.ai) by default — no paid Gemini image quota needed.
+Gemini (optional) powers punchier voiceovers. Beat illustrations use free [Pollinations.ai](https://pollinations.ai) by default — no paid Gemini image quota needed.
 
 ## Instagram auto-post
 
@@ -101,8 +93,7 @@ Works if Meta can fetch a temporary public URL of your MP4. Use dashboard ID `17
 Post one reel when ready:
 
 ```bash
-.venv/bin/python bot/run_daily.py --type fridge --post
-.venv/bin/python bot/run_daily.py --type meal --post
+.venv/bin/python bot/run_daily.py --type fact --post
 # or retry an existing file:
 .venv/bin/python bot/run_daily.py --post-file bot/output/<stamp>/reel.mp4
 ```
@@ -113,8 +104,8 @@ The bot posts from GitHub Actions so your Mac does not need to stay on.
 
 | Workflow | Cron (UTC) | JST | Command |
 |----------|------------|-----|---------|
-| [daily-reel.yml](../.github/workflows/daily-reel.yml) | `0 4 * * *` | **1:00 PM** | `--type fridge --post` |
-| [daily-meal-reel.yml](../.github/workflows/daily-meal-reel.yml) | `0 10 * * *` | **7:00 PM** | `--type meal --post` |
+| [daily-reel.yml](../.github/workflows/daily-reel.yml) | `7 4 * * *` | **1:00 PM** | `--type fact --post` |
+| [daily-meal-reel.yml](../.github/workflows/daily-meal-reel.yml) | `9 10 * * *` | **7:00 PM** | `--type fact --post` |
 
 ### Required repo secrets
 
@@ -123,7 +114,7 @@ Settings → Secrets and variables → Actions:
 - `INSTAGRAM_USER_ID`
 - `INSTAGRAM_ACCESS_TOKEN` (Facebook **Page** token, `EAA…`)
 - `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, `YOUTUBE_REFRESH_TOKEN` (see [YouTube Shorts auto-post](#youtube-shorts-auto-post))
-- `GEMINI_API_KEY` (recommended — scripts + meal plate photos)
+- `GEMINI_API_KEY` (recommended — scripts + image fallback)
 
 Or set via CLI:
 
@@ -199,11 +190,10 @@ Notes:
 
 ```text
 bot/
-  assets/bg/           # fridge_open.png, kitchen.png
   assets/nib/raw/      # your original sheets
   assets/nib/poses/    # auto-cropped poses
-  data/                # used_topics.json, used_meals.json
-  src/                 # script, voice, video, meal render, Instagram
+  data/                # used_facts.json
+  src/                 # facts, script, voice, video, Instagram
   output/              # generated reels
   run_daily.py
 ```

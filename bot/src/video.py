@@ -6,34 +6,33 @@ import threading
 from pathlib import Path
 
 import imageio_ffmpeg
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
-from .config import (
-    CAPTION_STROKE,
-    FPS,
-    FRIDGE_BG_PATH,
-    VIDEO_HEIGHT,
-    VIDEO_WIDTH,
-)
+from .config import ACCENT, FACT_BG, FPS, TARGET_REEL_SECONDS, VIDEO_HEIGHT, VIDEO_WIDTH
 from .fonts import get_font
 from .horns import fix_horn_colors
 from .poses import list_poses
-from .props import held_prop
 from .script_gen import ReelScript
-from .tts import VoiceResult, active_beat_at, align_script_beats, generate_voiceover
+from .tts import (
+    VoiceResult,
+    WordTiming,
+    active_beat_at,
+    active_word_index,
+    align_script_beats,
+    generate_voiceover,
+)
 
-# One stable pose per beat (no rapid cycling)
-POSE_FOR_BEAT = {
-    "hook": "judge_think",
-    "find": "shocked",
-    "react": "talk_thumbs_up",
-    "fact": "talk_wave",
-    "extra": "judge_sincere",
-    "payoff": "celebrating",
-}
+POSE_FOR_INDEX = [
+    "judge_think",
+    "shocked",
+    "talk_thumbs_up",
+    "talk_wave",
+    "judge_sincere",
+    "celebrating",
+]
 
 
-def _load_pose(path: Path, max_h: int = 900) -> Image.Image:
+def _load_pose(path: Path, max_h: int = 700) -> Image.Image:
     from .cutout import cutout_character
 
     nib = cutout_character(Image.open(path).convert("RGBA"))
@@ -44,101 +43,131 @@ def _load_pose(path: Path, max_h: int = 900) -> Image.Image:
     ratio = max_h / max(nib.height, 1)
     w = max(1, int(nib.width * ratio))
     h = max(1, int(nib.height * ratio))
-    if w > VIDEO_WIDTH - 40:
-        ratio = (VIDEO_WIDTH - 40) / max(nib.width, 1)
+    if w > VIDEO_WIDTH - 80:
+        ratio = (VIDEO_WIDTH - 80) / max(nib.width, 1)
         w = max(1, int(nib.width * ratio))
         h = max(1, int(nib.height * ratio))
     return nib.resize((w, h), Image.Resampling.LANCZOS)
 
 
-def _fridge_base() -> Image.Image:
-    if not FRIDGE_BG_PATH.exists():
-        return Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), (30, 90, 110))
-    bg = Image.open(FRIDGE_BG_PATH).convert("RGB")
-    target_ratio = VIDEO_WIDTH / VIDEO_HEIGHT
-    w, h = bg.size
-    ratio = w / h
-    if ratio > target_ratio:
-        new_w = int(h * target_ratio)
-        left = (w - new_w) // 2
-        bg = bg.crop((left, 0, left + new_w, h))
-    else:
-        new_h = int(w / target_ratio)
-        top = (h - new_h) // 5
-        bg = bg.crop((0, top, w, top + new_h))
-    bg = bg.resize((VIDEO_WIDTH, VIDEO_HEIGHT), Image.Resampling.LANCZOS)
-    bg = ImageEnhance.Color(bg).enhance(1.12)
-    bg = ImageEnhance.Contrast(bg).enhance(1.06)
-    return bg
+def _still_base() -> Image.Image:
+    return Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), FACT_BG)
 
 
-def _ken_burns(base: Image.Image, progress: float) -> Image.Image:
-    scale = 1.0 + 0.05 * progress
-    w = int(VIDEO_WIDTH * scale)
-    h = int(VIDEO_HEIGHT * scale)
-    framed = base.resize((w, h), Image.Resampling.BILINEAR)
-    max_x = w - VIDEO_WIDTH
-    max_y = h - VIDEO_HEIGHT
-    x = int(max_x * (0.4 + 0.2 * math.sin(progress * math.pi)))
-    y = int(max_y * (0.3 + 0.15 * progress))
-    return framed.crop((x, y, x + VIDEO_WIDTH, y + VIDEO_HEIGHT))
+def _object_sticker(img: Image.Image, max_size: int) -> Image.Image:
+    """Place the cut-out object on the reel — no square card behind it."""
+    rgba = img.convert("RGBA")
+    extrema = rgba.getextrema()
+    has_alpha = extrema[3][0] < 250 if extrema and len(extrema) > 3 else False
+    if not has_alpha:
+        from .cutout import cutout_object
+
+        rgba = cutout_object(rgba)
+    bbox = rgba.getbbox()
+    if bbox:
+        rgba = rgba.crop(bbox)
+    w, h = rgba.size
+    scale = min(max_size / max(w, 1), max_size / max(h, 1))
+    nw = max(1, int(w * scale))
+    nh = max(1, int(h * scale))
+    return rgba.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
-def _speech_bubble(frame: Image.Image, text: str, anchor_x: int, anchor_y: int) -> None:
-    if not text:
-        return
-    draw = ImageDraw.Draw(frame, "RGBA")
-    font = get_font(44)
-    words = text.split()
-    lines: list[str] = []
-    cur = ""
-    for w in words:
-        trial = (cur + " " + w).strip()
-        if len(trial) > 22:
-            if cur:
-                lines.append(cur)
-            cur = w
+CAPTION_TOP = 64
+CAPTION_FONT_SIZE = 58
+CAPTION_STROKE = 6
+CAPTION_LINE_H = 78
+CAPTION_MAX_CHARS = 22
+CAPTION_MAX_LINES = 2
+SPACE_W_SCALE = 0.32
+
+
+def _wrap_words(words: list[WordTiming], max_chars: int = CAPTION_MAX_CHARS) -> list[list[WordTiming]]:
+    lines: list[list[WordTiming]] = []
+    cur: list[WordTiming] = []
+    chars = 0
+    for word in words:
+        token = (word.text or "").strip()
+        if not token:
+            continue
+        extra = len(token) + (1 if cur else 0)
+        if cur and chars + extra > max_chars:
+            lines.append(cur)
+            cur = [word]
+            chars = len(token)
         else:
-            cur = trial
+            cur.append(word)
+            chars += extra
     if cur:
         lines.append(cur)
-    lines = lines[:4]
-    line_h = 52
-    pad_x, pad_y = 26, 20
-    tw = max(draw.textbbox((0, 0), ln, font=font)[2] for ln in lines)
-    th = line_h * len(lines)
-    bw = tw + pad_x * 2
-    bh = th + pad_y * 2
-    x = max(30, min(anchor_x, VIDEO_WIDTH - bw - 30))
-    y = max(40, min(anchor_y, VIDEO_HEIGHT - bh - 300))
-
-    draw.rounded_rectangle((x + 6, y + 8, x + bw + 6, y + bh + 8), radius=26, fill=(0, 0, 0, 90))
-    draw.rounded_rectangle((x, y, x + bw, y + bh), radius=26, fill=(255, 252, 245, 245))
-    draw.rounded_rectangle((x, y, x + bw, y + bh), radius=26, outline=(255, 180, 70, 255), width=4)
-    tail_x = x + min(90, bw // 3)
-    draw.polygon(
-        [(tail_x, y + bh - 2), (tail_x + 34, y + bh - 2), (tail_x + 10, y + bh + 34)],
-        fill=(255, 252, 245, 245),
-    )
-    for i, ln in enumerate(lines):
-        draw.text((x + pad_x, y + pad_y + i * line_h), ln, font=font, fill=CAPTION_STROKE)
+    return lines
 
 
-def _hand_anchor(pose_name: str, nib_w: int, nib_h: int) -> tuple[int, int]:
-    """Approximate hand position relative to Nib top-left for prop placement."""
-    # fractions of nib box → (x, y) offsets for prop center
-    anchors = {
-        "talk_thumbs_up": (0.82, 0.42),
-        "talk_wave": (0.85, 0.35),
-        "celebrating": (0.78, 0.22),
-        "shocked": (0.75, 0.45),
-        "judge_excited": (0.80, 0.30),
-        "judge_approve": (0.78, 0.40),
-        "happy": (0.72, 0.48),
-        "talk_cheer": (0.80, 0.25),
-    }
-    fx, fy = anchors.get(pose_name, (0.78, 0.40))
-    return int(nib_w * fx), int(nib_h * fy)
+def _caption_groups(words: list[WordTiming]) -> list[list[WordTiming]]:
+    """Pack timed words into 1–2 line karaoke chunks."""
+    lines = _wrap_words(words)
+    groups: list[list[WordTiming]] = []
+    for i in range(0, len(lines), CAPTION_MAX_LINES):
+        chunk: list[WordTiming] = []
+        for line in lines[i : i + CAPTION_MAX_LINES]:
+            chunk.extend(line)
+        if chunk:
+            groups.append(chunk)
+    return groups
+
+
+def _group_for_word(groups: list[list[WordTiming]], word_idx: int, words: list[WordTiming]) -> list[WordTiming]:
+    if not groups or word_idx < 0 or not words:
+        return []
+    target = words[word_idx]
+    for group in groups:
+        if any(w is target for w in group):
+            return group
+    return groups[-1]
+
+
+def _caption_bottom_y(line_count: int) -> int:
+    n = max(line_count, 1)
+    return CAPTION_TOP + CAPTION_LINE_H * n + 8
+
+
+def _draw_karaoke_captions(
+    frame: Image.Image,
+    group: list[WordTiming],
+    active: WordTiming | None,
+) -> int:
+    """Draw live captions; highlight the word currently being spoken."""
+    if not group:
+        return CAPTION_TOP
+    lines = _wrap_words(group)
+    draw = ImageDraw.Draw(frame)
+    font = get_font(CAPTION_FONT_SIZE)
+    space_w = max(10, int(font.size * SPACE_W_SCALE))
+    y = CAPTION_TOP
+    idle = (235, 235, 242)
+    spoken = (255, 255, 255)
+    for line in lines:
+        widths = []
+        for word in line:
+            bbox = draw.textbbox((0, 0), word.text, font=font, stroke_width=CAPTION_STROKE)
+            widths.append(bbox[2] - bbox[0])
+        total = sum(widths) + space_w * max(len(line) - 1, 0)
+        x = max(20, (VIDEO_WIDTH - total) // 2)
+        for word, w in zip(line, widths):
+            is_active = active is not None and word is active
+            already = active is not None and word.start < active.start
+            fill = ACCENT if is_active else (spoken if already else idle)
+            draw.text(
+                (x, y),
+                word.text,
+                font=font,
+                fill=fill,
+                stroke_width=CAPTION_STROKE,
+                stroke_fill=(20, 18, 36),
+            )
+            x += w + space_w
+        y += CAPTION_LINE_H
+    return y
 
 
 def render_reel(script: ReelScript, out_dir: Path) -> Path:
@@ -147,39 +176,34 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
     final_path = out_dir / "reel.mp4"
 
     voice: VoiceResult = generate_voiceover(script.voiceover, audio_path)
-    # Follow full voiceover — old 22s cap cut off the last words
-    duration = max(14.0, min(voice.duration + 0.4, 45.0))
+    duration = max(TARGET_REEL_SECONDS, voice.duration + 0.35)
+    duration = min(duration, 40.0)
 
-    # Sync bubbles/poses to real speech times (fixes late captions)
-    timeline = align_script_beats(
-        [
-            ("hook", script.hook),
-            ("find", script.discover),
-            ("react", script.react),
-            ("fact", script.benefit),
-            ("extra", script.extra),
-            ("payoff", script.payoff),
-        ],
-        voice.words,
-        duration,
-    )
-    find_start = next((s for name, _, s, _ in timeline if name == "find"), duration * 0.2)
+    beats = script.beats or []
+    beat_texts = [(f"beat_{i}", b.get("spoken") or "") for i, b in enumerate(beats)]
+    timeline = align_script_beats(beat_texts, voice.words, duration)
+    caption_groups = _caption_groups(voice.words)
+
     print("   Caption sync beats:")
     for name, text, start, end in timeline:
         print(f"     {start:5.2f}-{end:5.2f}s  [{name}] {text[:48]}")
 
     poses = list_poses()
     pose_cache = {
-        name: _load_pose(path, max_h=900)
+        name: _load_pose(path)
         for name, path in poses.items()
         if name != "fridge"
     }
     if not pose_cache:
         pose_cache = {name: _load_pose(path) for name, path in poses.items()}
 
-    fridge = _fridge_base()
-    prop = held_prop(script.item_emoji, size=280)
+    stickers: dict[str, Image.Image] = {}
+    for i, path_str in enumerate(script.beat_image_paths):
+        p = Path(path_str)
+        if p.exists():
+            stickers[f"beat_{i}"] = _object_sticker(Image.open(p), 720)
 
+    base = _still_base()
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [
         ffmpeg, "-y",
@@ -189,9 +213,7 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
         "-i", str(audio_path),
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
         "-profile:v", "main", "-level", "4.0",
-        # Instagram rejects many edge-tts rates (24 kHz); Reels expect AAC @ 48 kHz
         "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
-        # Keep full audio; -shortest would still risk cutting if video frames lag
         "-t", f"{duration:.3f}",
         "-movflags", "+faststart",
         str(final_path),
@@ -220,80 +242,76 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
     total_frames = int(duration * FPS)
     punch = 0.0
     last_beat = ""
+    pose_names = list(pose_cache.keys())
 
     try:
         for i in range(total_frames):
             t = i / FPS
-            progress = t / duration
-            beat, bubble = active_beat_at(timeline, t)
+            beat, _spoken = active_beat_at(timeline, t)
             if beat != last_beat:
                 punch = 1.0
                 last_beat = beat
-            punch *= 0.9
+            punch *= 0.88
 
-            frame = _ken_burns(fridge, progress).convert("RGBA")
+            frame = base.copy().convert("RGBA")
 
-            preferred = POSE_FOR_BEAT.get(beat, "idle")
+            beat_idx = 0
+            if beat.startswith("beat_"):
+                try:
+                    beat_idx = int(beat.split("_", 1)[1])
+                except ValueError:
+                    beat_idx = 0
+            preferred = POSE_FOR_INDEX[min(beat_idx, len(POSE_FOR_INDEX) - 1)]
             pose_name = preferred if preferred in pose_cache else (
-                "idle" if "idle" in pose_cache else next(iter(pose_cache))
+                "idle" if "idle" in pose_cache else pose_names[beat_idx % len(pose_names)]
             )
-            show_prop = beat != "hook"
-
             nib = pose_cache[pose_name]
-            # Gentle bob only — no frantic shake
             bounce = int(6 * math.sin(t * 2 * math.pi * 1.1))
-            scale = 1.0 + 0.04 * punch
+            scale = 1.0 + 0.045 * punch
             sway = int(4 * math.sin(t * 2 * math.pi * 0.35))
             nib_r = nib.resize(
                 (max(1, int(nib.width * scale)), max(1, int(nib.height * scale))),
                 Image.Resampling.BILINEAR,
             )
 
-            shadow = Image.new("RGBA", (nib_r.width, 60), (0, 0, 0, 0))
+            shadow = Image.new("RGBA", (nib_r.width, 70), (0, 0, 0, 0))
             sd = ImageDraw.Draw(shadow)
-            sd.ellipse((20, 10, nib_r.width - 20, 50), fill=(0, 0, 0, 90))
+            sd.ellipse((24, 14, nib_r.width - 24, 58), fill=(0, 0, 0, 90))
             shadow = shadow.filter(ImageFilter.GaussianBlur(8))
 
             nx = (VIDEO_WIDTH - nib_r.width) // 2 + sway
-            ny = VIDEO_HEIGHT - nib_r.height - 36 + bounce
+            ny = VIDEO_HEIGHT - nib_r.height - 80 + bounce
             nx = max(10, min(VIDEO_WIDTH - nib_r.width - 10, nx))
-            ny = max(350, min(VIDEO_HEIGHT - nib_r.height - 10, ny))
+            ny = max(520, min(VIDEO_HEIGHT - nib_r.height - 20, ny))
 
-            frame.alpha_composite(shadow, (nx, ny + nib_r.height - 45))
-            frame.alpha_composite(nib_r, (nx, ny))
+            word_idx = active_word_index(voice.words, t)
+            active_word = voice.words[word_idx] if word_idx >= 0 else None
+            caption_group = _group_for_word(caption_groups, word_idx, voice.words)
+            caption_lines = _wrap_words(caption_group) if caption_group else []
+            caption_bottom = _caption_bottom_y(len(caption_lines))
 
-            if show_prop:
-                local = 1.0
-                if beat == "find":
-                    local = min(1.0, max(0.0, (t - find_start) / 0.25))
-                pop = 0.75 + 0.25 * local + 0.04 * math.sin(t * 3)
-                pw = max(1, int(prop.width * pop))
-                ph = max(1, int(prop.height * pop))
-                prop_r = prop.resize((pw, ph), Image.Resampling.BILINEAR)
-                if local < 0.99:
-                    import numpy as np
-
-                    a = np.array(prop_r)
-                    a[:, :, 3] = (a[:, :, 3].astype(np.float32) * local).astype(np.uint8)
-                    prop_r = Image.fromarray(a, "RGBA")
-
-                hx, hy = _hand_anchor(pose_name, nib_r.width, nib_r.height)
-                px = nx + int(nib_r.width * 0.62)
-                py = ny + int(nib_r.height * 0.28) + int(6 * math.sin(t * 2.2))
-                if pose_name in {"talk_thumbs_up", "celebrating", "talk_wave", "judge_approve"}:
-                    px = nx + hx - prop_r.width // 4
-                    py = ny + hy - prop_r.height // 3
-                px = max(20, min(VIDEO_WIDTH - prop_r.width - 20, px))
-                py = max(120, min(VIDEO_HEIGHT - prop_r.height - 160, py))
-
-                glow = Image.new("RGBA", (prop_r.width + 70, prop_r.height + 70), (0, 0, 0, 0))
+            sticker = stickers.get(beat)
+            if sticker is not None:
+                pop = 0.94 + 0.06 * punch
+                sw = max(1, int(sticker.width * pop))
+                sh = max(1, int(sticker.height * pop))
+                art = sticker.resize((sw, sh), Image.Resampling.LANCZOS)
+                ax = (VIDEO_WIDTH - art.width) // 2
+                ay = caption_bottom + 18 + int(4 * math.sin(t * 2.0))
+                max_ay = ny - art.height - 12
+                if max_ay > 0:
+                    ay = min(ay, max_ay)
+                ay = max(caption_bottom + 8, ay)
+                glow = Image.new("RGBA", (art.width + 80, art.height + 80), (0, 0, 0, 0))
                 gd = ImageDraw.Draw(glow)
-                gd.ellipse((0, 0, glow.width, glow.height), fill=(255, 230, 120, 75))
-                glow = glow.filter(ImageFilter.GaussianBlur(14))
-                frame.alpha_composite(glow, (px - 35, py - 35))
-                frame.alpha_composite(prop_r, (px, py))
+                gd.ellipse((12, 12, glow.width - 12, glow.height - 12), fill=(0, 0, 0, 55))
+                glow = glow.filter(ImageFilter.GaussianBlur(16))
+                frame.alpha_composite(glow, (ax - 40, ay - 40))
+                frame.alpha_composite(art, (ax, ay))
 
-            _speech_bubble(frame, bubble, nx + nib_r.width - 40, max(50, ny - 30))
+            frame.alpha_composite(shadow, (nx, ny + nib_r.height - 50))
+            frame.alpha_composite(nib_r, (nx, ny))
+            _draw_karaoke_captions(frame, caption_group, active_word)
 
             rgb = frame.convert("RGB")
             try:
@@ -329,3 +347,53 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
     if code != 0 or not final_path.exists():
         raise RuntimeError(f"ffmpeg encode failed:\n{err[-2000:]}")
     return final_path
+
+
+def _ken_burns(base: Image.Image, progress: float) -> Image.Image:
+    """Kept for leftover meal_video imports; fact reels use a still background."""
+    scale = 1.0 + 0.05 * progress
+    w = int(VIDEO_WIDTH * scale)
+    h = int(VIDEO_HEIGHT * scale)
+    framed = base.resize((w, h), Image.Resampling.BILINEAR)
+    max_x = w - VIDEO_WIDTH
+    max_y = h - VIDEO_HEIGHT
+    x = int(max_x * (0.4 + 0.2 * math.sin(progress * math.pi)))
+    y = int(max_y * (0.3 + 0.15 * progress))
+    return framed.crop((x, y, x + VIDEO_WIDTH, y + VIDEO_HEIGHT))
+
+
+def _speech_bubble(frame: Image.Image, text: str, anchor_x: int, anchor_y: int) -> None:
+    """Kept for leftover meal_video imports."""
+    if not text:
+        return
+    from .config import CAPTION_STROKE
+
+    draw = ImageDraw.Draw(frame, "RGBA")
+    font = get_font(44)
+    words = text.split()
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        trial = (cur + " " + w).strip()
+        if len(trial) > 22:
+            if cur:
+                lines.append(cur)
+            cur = w
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    lines = lines[:4]
+    line_h = 52
+    pad_x, pad_y = 26, 20
+    tw = max(draw.textbbox((0, 0), ln, font=font)[2] for ln in lines)
+    th = line_h * len(lines)
+    bw = tw + pad_x * 2
+    bh = th + pad_y * 2
+    x = max(30, min(anchor_x, VIDEO_WIDTH - bw - 30))
+    y = max(40, min(anchor_y, VIDEO_HEIGHT - bh - 300))
+    draw.rounded_rectangle((x + 6, y + 8, x + bw + 6, y + bh + 8), radius=26, fill=(0, 0, 0, 90))
+    draw.rounded_rectangle((x, y, x + bw, y + bh), radius=26, fill=(255, 252, 245, 245))
+    draw.rounded_rectangle((x, y, x + bw, y + bh), radius=26, outline=(255, 180, 70, 255), width=4)
+    for i, ln in enumerate(lines):
+        draw.text((x + pad_x, y + pad_y + i * line_h), ln, font=font, fill=CAPTION_STROKE)

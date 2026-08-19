@@ -7,6 +7,62 @@ import numpy as np
 from PIL import Image
 
 
+def cutout_object(im: Image.Image, bg_thresh: float = 52.0) -> Image.Image:
+    """
+    Knock out a generated illustration's backdrop so the subject sits on the reel.
+    Same edge flood-fill as Nib, without filling interior holes as white eyes.
+    """
+    rgba = im.convert("RGBA")
+    arr = np.array(rgba)
+    h, w = arr.shape[:2]
+    rgb = arr[:, :, :3].astype(np.float32)
+
+    border = np.concatenate(
+        [rgb[0, :, :], rgb[-1, :, :], rgb[:, 0, :], rgb[:, -1, :]],
+        axis=0,
+    )
+    bg = np.median(border, axis=0)
+    dist = np.sqrt(((rgb - bg) ** 2).sum(axis=2))
+    is_bg_color = dist < bg_thresh
+    near_white = (
+        (rgb[:, :, 0] > 220)
+        & (rgb[:, :, 1] > 214)
+        & (rgb[:, :, 2] > 200)
+        & (dist < 110)
+    )
+    chroma_green = (
+        (rgb[:, :, 1] > 170)
+        & (rgb[:, :, 1] > rgb[:, :, 0] + 40)
+        & (rgb[:, :, 1] > rgb[:, :, 2] + 40)
+    )
+    candidate = is_bg_color | near_white | chroma_green
+
+    bg_mask = np.zeros((h, w), dtype=bool)
+    q: deque[tuple[int, int]] = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            if candidate[y, x]:
+                bg_mask[y, x] = True
+                q.append((y, x))
+    for y in range(h):
+        for x in (0, w - 1):
+            if candidate[y, x] and not bg_mask[y, x]:
+                bg_mask[y, x] = True
+                q.append((y, x))
+
+    while q:
+        y, x = q.popleft()
+        for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+            if 0 <= ny < h and 0 <= nx < w and not bg_mask[ny, nx] and candidate[ny, nx]:
+                bg_mask[ny, nx] = True
+                q.append((ny, nx))
+
+    alpha = np.where(bg_mask, 0, 255).astype(np.uint8)
+    out = arr.copy()
+    out[:, :, 3] = alpha
+    return Image.fromarray(out, "RGBA")
+
+
 def cutout_character(im: Image.Image, bg_thresh: float = 38.0) -> Image.Image:
     """
     Remove sheet/cream backgrounds behind Nib.

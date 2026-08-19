@@ -16,36 +16,65 @@ Setup before running:
 Run:
     .venv/bin/python bot/get_youtube_refresh_token.py
 
+Google no longer lets you re-download an existing client secret. If
+YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET are already in bot/.env, this
+script uses those and you do not need a JSON file.
+
+If you lost the secret: on the Desktop client page click "Add secret", copy
+the new value into bot/.env as YOUTUBE_CLIENT_SECRET, then re-run this script.
+
 This opens your browser once. Approve the "upload videos" permission for the
-YouTube channel you want the bot to post to, then copy the printed values into
-bot/.env:
-    YOUTUBE_CLIENT_ID=...
-    YOUTUBE_CLIENT_SECRET=...
-    YOUTUBE_REFRESH_TOKEN=...
+YouTube channel you want the bot to post to, then copy the printed
+YOUTUBE_REFRESH_TOKEN into bot/.env (and GitHub secrets if you use Actions).
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+
+def _flow_from_env(root: Path) -> InstalledAppFlow | None:
+    load_dotenv(root / ".env")
+    client_id = os.getenv("YOUTUBE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("YOUTUBE_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        return None
+    return InstalledAppFlow.from_client_config(
+        {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": ["http://localhost"],
+            }
+        },
+        SCOPES,
+    )
 
 
 def main() -> None:
     root = Path(__file__).resolve().parent
     client_secret_path = Path(sys.argv[1]) if len(sys.argv) > 1 else root / "client_secret.json"
 
-    if not client_secret_path.exists():
-        print(f"Could not find {client_secret_path}")
-        print("Download an OAuth 'Desktop app' client JSON from Google Cloud Console")
-        print("(APIs & Services -> Credentials) and save it there, or pass its path:")
-        print("  .venv/bin/python bot/get_youtube_refresh_token.py /path/to/client_secret.json")
-        raise SystemExit(1)
+    if client_secret_path.exists():
+        flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
+    else:
+        flow = _flow_from_env(root)
+        if flow is None:
+            print(f"Could not find {client_secret_path}")
+            print("and bot/.env is missing YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET.")
+            print("On the Desktop client page, click Add secret, put the new values in")
+            print("bot/.env, then re-run this script.")
+            raise SystemExit(1)
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(client_secret_path), SCOPES)
     creds = flow.run_local_server(port=0, prompt="consent")
 
     print("\nAdd these to bot/.env (and as GitHub Actions secrets):\n")

@@ -230,6 +230,18 @@ def _find_sequence(tokens: list[str], want: list[str], start_at: int) -> int | N
     return None
 
 
+def active_word_index(words: list[WordTiming], t: float) -> int:
+    """Index of the word being spoken at time t, or the last spoken word."""
+    if not words:
+        return -1
+    for i, word in enumerate(words):
+        if word.start <= t < word.end:
+            return i
+        if t < word.start:
+            return max(i - 1, 0)
+    return len(words) - 1
+
+
 def active_beat_at(
     timeline: list[tuple[str, str, float, float]],
     t: float,

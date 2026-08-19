@@ -26,9 +26,9 @@ def main() -> None:
     parser.add_argument("--no-post", action="store_true", help="Never publish (default)")
     parser.add_argument(
         "--type",
-        choices=("fridge", "meal"),
-        default="fridge",
-        help="Reel type: fridge nutrition (1pm) or meal recipe (7pm). Default: fridge",
+        choices=("fact", "fridge", "meal"),
+        default="fact",
+        help="Reel type: curiosity facts (fridge/meal aliases map to fact). Default: fact",
     )
     parser.add_argument(
         "--post-file",

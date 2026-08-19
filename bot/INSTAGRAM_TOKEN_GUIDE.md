@@ -15,7 +15,7 @@ full OAuth flow — see [Renewal](#renewal-before-it-expires) at the bottom.
 ## 1. Find the correct App ID + App Secret
 
 Facebook Apps that have the **"Instagram API with Instagram Login"** product added get a
-*separate*, product-specific "Instagram app ID" / "Instagram app secret" shown on that product's
+_separate_, product-specific "Instagram app ID" / "Instagram app secret" shown on that product's
 setup page. **Do not use those** — they only work for direct Instagram-Login OAuth
 (`api.instagram.com`), not the Page-token flow below, and using them causes:
 
@@ -28,7 +28,7 @@ Instead, use the app's **main** credentials:
 1. [developers.facebook.com/apps](https://developers.facebook.com/apps/) → open your app
 2. Left sidebar → **Settings → Basic**
 3. Copy **App ID** and **App Secret** (click "Show" on the secret, re-enter your Facebook
-   password if prompted) from the top of *this* page
+   password if prompted) from the top of _this_ page
 
 Sanity-check the pair is valid before going further:
 
@@ -48,8 +48,8 @@ above, you still have the wrong App ID/Secret pair (wrong app, or a typo).
    `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`
 5. Click **Generate Access Token**
 
-**Watch out:** if you've authorized this app before, Facebook shows *"Continue as [You]? You've
-previously linked [App] to Facebook. Would you like to continue with your previous settings?"*.
+**Watch out:** if you've authorized this app before, Facebook shows _"Continue as [You]? You've
+previously linked [App] to Facebook. Would you like to continue with your previous settings?"_.
 Clicking **Continue** silently reuses the old grant and **skips the Page picker**, which later
 makes `/me/accounts` return `{"data":[]}` even though everything else looks fine. Always click
 **Edit settings** instead so you get the full flow, including:
@@ -64,6 +64,8 @@ Copy the resulting token from the **Access Token** field.
 ```bash
 curl -s "https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=YOUR_APP_ID&client_secret=YOUR_APP_SECRET&fb_exchange_token=YOUR_SHORT_LIVED_TOKEN"
 ```
+
+curl -s "https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=1334340338913571&client_secret=5dace7cbe3c74a34df17bd443cdd6ba1&fb_exchange_token=EAAS9k1HpESMBSLTVb1QGlu3NdB4fx21azlZAkxnWrZCawc3ocbrPZCxRFCM6fyoF7NgZC4PzDwMxm0ZBUopHXUZAqKliZBQdUDedbvLcViaqVp1zHU8ZAEhsKdSrmrRgMJzJZAgnWtKMYDrdku2J0lV74m2zr09wQNao0J4mmwD2PRIiHW6ZACxrgsymmOKpvQ58rdiZCrVjUXDocppePNcZCGiLaPv9LrM056bsoUuoNr5h7MCVzePJcexMF3sWzlRNtNZClEccGrFSd7ZB6t3t1TwQMmGTIx"
 
 Returns `{"access_token":"...","expires_in":5184000}` (~60 days). This is a **User** token —
 still one step away from what we need.
@@ -131,10 +133,10 @@ few days before expiry, then just repeat **steps 2–6** above with a fresh shor
 
 ## Common errors, decoded
 
-| Error | Meaning |
-|---|---|
-| `Error validating application. Cannot get application info due to a system error.` | Wrong App ID/Secret pair — likely used the Instagram-product-specific ID instead of the main app's (Settings → Basic) ID. |
-| `Error validating access token: Session has expired on ...` | You're using a short-lived token (expires in ~1-2 hours) instead of an exchanged long-lived one. |
-| `Invalid grant_type: 'EAA...'` | Copy-paste slipped a token into the `grant_type` parameter instead of `client_credentials`/`fb_exchange_token`. |
-| `{"data": []}` from `/me/accounts` | Either the "Continue with previous settings" dialog skipped the Page picker (redo with "Edit settings"), or the Page just isn't listed there (New Pages Experience) — query the Page node by ID directly instead (step 4). |
-| Page token expires in a few hours despite following all steps | It was derived from a short-lived User token — exchange the Page token itself too (step 5). |
+| Error                                                                              | Meaning                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Error validating application. Cannot get application info due to a system error.` | Wrong App ID/Secret pair — likely used the Instagram-product-specific ID instead of the main app's (Settings → Basic) ID.                                                                                                  |
+| `Error validating access token: Session has expired on ...`                        | You're using a short-lived token (expires in ~1-2 hours) instead of an exchanged long-lived one.                                                                                                                           |
+| `Invalid grant_type: 'EAA...'`                                                     | Copy-paste slipped a token into the `grant_type` parameter instead of `client_credentials`/`fb_exchange_token`.                                                                                                            |
+| `{"data": []}` from `/me/accounts`                                                 | Either the "Continue with previous settings" dialog skipped the Page picker (redo with "Edit settings"), or the Page just isn't listed there (New Pages Experience) — query the Page node by ID directly instead (step 4). |
+| Page token expires in a few hours despite following all steps                      | It was derived from a short-lived User token — exchange the Page token itself too (step 5).                                                                                                                                |
