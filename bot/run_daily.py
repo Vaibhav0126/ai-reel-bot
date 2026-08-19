@@ -28,7 +28,7 @@ def main() -> None:
         "--type",
         choices=("fact", "fridge", "meal"),
         default="fact",
-        help="Reel type: curiosity facts (fridge/meal aliases map to fact). Default: fact",
+        help="Reel type: curiosity fact, fridge food-fact, or meal recipe. Default: fact",
     )
     parser.add_argument(
         "--post-file",

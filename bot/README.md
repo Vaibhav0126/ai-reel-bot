@@ -4,12 +4,13 @@ Automated pipeline for [@nibthefridgegoblin](https://instagram.com/nibthefridgeg
 
 ## What it does
 
-Two daily **curiosity-fact** reels (same format both times):
+Two daily **curiosity-fact** reels plus one **fridge food-fact** reel in between:
 
 | Slot | Schedule (JST) | Content |
 |------|----------------|---------|
-| morning | 1:00 PM | Nib tells a fact (animals, food, psychology, body, nature, science) |
-| evening | 7:00 PM | Another unused fact, category rotated vs the last post |
+| afternoon | 1:00 PM | Curiosity fact (still color BG + beat art) |
+| late afternoon | 4:00 PM | Nib at the open fridge, holding a food, stating a nutrition fact |
+| evening | 7:00 PM | Another unused curiosity fact |
 
 Each run:
 
@@ -39,14 +40,13 @@ Extract poses from your character sheets (once):
 ## Generate a reel (no post)
 
 ```bash
-.venv/bin/python bot/run_daily.py
-# same as:
 .venv/bin/python bot/run_daily.py --type fact
+.venv/bin/python bot/run_daily.py --type fridge
 ```
 
-`--type fridge` / `--type meal` map to the same fact format.
+`--type meal` still builds the older kitchen recipe format if you want it locally (no daily workflow).
 
-Output lands in `bot/output/<timestamp>/reel.mp4` with `caption.txt` and `beat_*.png`.
+Fact output lands in `bot/output/<timestamp>/reel.mp4` with `caption.txt` and `beat_*.png`. Fridge reels use `fridge_open.png` and a held food prop.
 
 ## Optional: smarter scripts + beat images (Gemini)
 
@@ -105,7 +105,8 @@ The bot posts from GitHub Actions so your Mac does not need to stay on.
 | Workflow | Cron (UTC) | JST | Command |
 |----------|------------|-----|---------|
 | [daily-fact-reel.yml](../.github/workflows/daily-fact-reel.yml) | `7 4 * * *` | **1:00 PM** | `--type fact --post` |
-| same workflow | `9 10 * * *` | **7:00 PM** | `--type fact --post` |
+| [daily-fridge-reel.yml](../.github/workflows/daily-fridge-reel.yml) | `11 7 * * *` | **4:00 PM** | `--type fridge --post` |
+| [daily-fact-reel.yml](../.github/workflows/daily-fact-reel.yml) | `9 10 * * *` | **7:00 PM** | `--type fact --post` |
 
 ### Required repo secrets
 

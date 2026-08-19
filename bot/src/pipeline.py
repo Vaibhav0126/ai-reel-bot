@@ -5,9 +5,19 @@ from datetime import datetime
 
 from .config import AUTO_POST, OUTPUT_DIR
 from .fact_image import generate_fact_images
+from .fridge_video import render_fridge_reel
 from .instagram import can_post, post_reel
+from .meal_image import generate_meal_image
+from .meal_video import render_meal_reel
 from .poses import extract_poses, list_poses
-from .script_gen import ReelScript, ReelType, generate_script, mark_fact_used
+from .script_gen import (
+    ReelScript,
+    ReelType,
+    generate_script,
+    mark_fact_used,
+    mark_meal_used,
+    mark_topic_used,
+)
 from .video import render_reel
 from .youtube import can_post as can_post_youtube
 from .youtube import post_short
@@ -15,7 +25,7 @@ from .youtube import post_short
 
 def _normalize_reel_type(reel_type: ReelType | str) -> ReelType:
     if reel_type in {"fact", "fridge", "meal"}:
-        return "fact"
+        return reel_type  # type: ignore[return-value]
     return "fact"
 
 
@@ -32,7 +42,7 @@ def _youtube_description(script: ReelScript) -> str:
 
 
 def run_daily(post: bool | None = None, reel_type: ReelType = "fact") -> dict:
-    """Generate today's Nib curiosity-fact reel. Optionally publish."""
+    """Generate today's Nib reel (fact, fridge, or meal). Optionally publish."""
     should_post = AUTO_POST if post is None else post
     reel_type = _normalize_reel_type(reel_type)
 
@@ -45,21 +55,36 @@ def run_daily(post: bool | None = None, reel_type: ReelType = "fact") -> dict:
     out_dir = OUTPUT_DIR / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("1/4 Writing fact script…")
+    print(f"1/4 Writing {reel_type} script…")
     script = generate_script(reel_type=reel_type)
-    print(f"   Topic: {script.topic} ({script.category})")
+    print(f"   Topic: {script.topic}" + (f" ({script.category})" if script.category else ""))
 
-    print("   Generating cartoon beat images…")
-    generate_fact_images(script, out_dir)
+    if reel_type == "fact":
+        print("   Generating cartoon beat images…")
+        generate_fact_images(script, out_dir)
+    elif reel_type == "meal":
+        print("   Generating plated meal image…")
+        plate = generate_meal_image(script, out_dir)
+        script.meal_image_path = str(plate)
 
     (out_dir / "script.json").write_text(json.dumps(script.to_dict(), indent=2))
     (out_dir / "caption.txt").write_text(script.caption)
 
     print("2/4 Rendering video + voice…")
-    video_path = render_reel(script, out_dir)
+    if reel_type == "meal":
+        video_path = render_meal_reel(script, out_dir)
+    elif reel_type == "fridge":
+        video_path = render_fridge_reel(script, out_dir)
+    else:
+        video_path = render_reel(script, out_dir)
     print(f"   Video: {video_path}")
 
-    mark_fact_used(script.topic_id)
+    if reel_type == "meal":
+        mark_meal_used(script.topic_id)
+    elif reel_type == "fridge":
+        mark_topic_used(script.topic_id)
+    else:
+        mark_fact_used(script.topic_id)
 
     result = {
         "output_dir": str(out_dir),

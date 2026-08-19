@@ -34,14 +34,13 @@ Live account: [@nibthefridgegoblin](https://instagram.com/nibthefridgegoblin)
 
 ## What it does
 
-The bot runs the **same curiosity-fact format twice a day**. Each post is a self-contained episode
-in Nib's voice: a "Do you know…" hook, punchy beats, huge on-screen captions, and cartoon images
-that swap with the line — on a **still color background** (no fridge or kitchen scene photos).
+The bot posts **three times a day**: two curiosity-fact reels and one classic Nib-at-the-fridge food fact in between.
 
 | Slot | Schedule (JST) | Cron (UTC) | Content |
 |------|-----------------|------------|---------|
-| **morning** | 1:00 PM | `7 4 * * *` | Unused fact from `facts.py` (category rotated vs last post) |
-| **evening** | 7:00 PM | `9 10 * * *` | Another unused fact, same renderer |
+| **afternoon** | 1:00 PM | `7 4 * * *` | Unused fact from `facts.py` (still color BG) |
+| **late afternoon** | 4:00 PM | `11 7 * * *` | Fridge goblin food fact from `topics.py` (open fridge + held food) |
+| **evening** | 7:00 PM | `9 10 * * *` | Another unused curiosity fact |
 
 Every run, fully unattended, does all of the following:
 
@@ -169,7 +168,8 @@ runner) knows what has already been posted.
 ```text
 AI Reel bot/
 ├── .github/workflows/
-│   └── daily-fact-reel.yml    # Cron: fact reel @ 1PM and 7PM JST
+│   ├── daily-fact-reel.yml      # Cron: fact reels @ 1PM and 7PM JST
+│   └── daily-fridge-reel.yml    # Cron: fridge food-fact @ 4PM JST
 ├── bot/
 │   ├── run_daily.py           # CLI entrypoint (argparse)
 │   ├── get_youtube_refresh_token.py  # One-time OAuth helper for YouTube
@@ -323,18 +323,18 @@ Retry publishing an already-rendered video:
 
 ## Daily automation (GitHub Actions)
 
-One scheduled workflow keeps the account posting twice a day without any machine staying online:
+Two scheduled workflows post three times a day without any machine staying online:
 
 | Workflow | Cron (UTC) | Local (JST) | Command run |
 |---|---|---|---|
 | [`daily-fact-reel.yml`](.github/workflows/daily-fact-reel.yml) | `7 4 * * *` | 1:00 PM | `python bot/run_daily.py --type fact --post` |
-| same workflow | `9 10 * * *` | 7:00 PM | `python bot/run_daily.py --type fact --post` |
+| [`daily-fridge-reel.yml`](.github/workflows/daily-fridge-reel.yml) | `11 7 * * *` | 4:00 PM | `python bot/run_daily.py --type fridge --post` |
+| [`daily-fact-reel.yml`](.github/workflows/daily-fact-reel.yml) | `9 10 * * *` | 7:00 PM | `python bot/run_daily.py --type fact --post` |
 
-The workflow: checks out the repo → sets up Python 3.12 with pip caching → installs
-`bot/requirements.txt` → runs the pipeline with secrets injected as env vars → commits the updated
-`used_facts.json` ledger back to `main` so state survives across runs on
-ephemeral runners. It can also be triggered manually via `workflow_dispatch`
-(*Actions → Daily Nib Fact Reel → Run workflow*, or `gh workflow run daily-fact-reel.yml`).
+The fact workflow commits `used_facts.json`; the fridge workflow commits `used_topics.json`.
+Both can be triggered manually via `workflow_dispatch`
+(*Actions → Daily Nib Fact Reel* or *Daily Nib Fridge Reel*, or
+`gh workflow run daily-fact-reel.yml` / `gh workflow run daily-fridge-reel.yml`).
 
 **Required repo secrets** (Settings → Secrets and variables → Actions):
 `INSTAGRAM_USER_ID`, `INSTAGRAM_ACCESS_TOKEN`, `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`,
