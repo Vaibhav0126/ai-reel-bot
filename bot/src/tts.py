@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -165,8 +166,28 @@ def _audio_file_duration(path: Path) -> float:
     return 0.0
 
 
+_TTS_ATTEMPTS = 5
+_TTS_BACKOFF_SEC = 3.0
+
+
 def generate_voiceover(text: str, out_path: Path, voice: str | None = None) -> VoiceResult:
-    return asyncio.run(_synthesize_with_timings(text, out_path, voice or EDGE_TTS_VOICE))
+    chosen = voice or EDGE_TTS_VOICE
+    last_err: Exception | None = None
+    for attempt in range(1, _TTS_ATTEMPTS + 1):
+        try:
+            return asyncio.run(_synthesize_with_timings(text, out_path, chosen))
+        except Exception as exc:
+            last_err = exc
+            if attempt >= _TTS_ATTEMPTS:
+                break
+            wait = _TTS_BACKOFF_SEC * (2 ** (attempt - 1))
+            print(
+                f"   TTS: attempt {attempt}/{_TTS_ATTEMPTS} failed "
+                f"({type(exc).__name__}: {exc}) — retrying in {wait:.0f}s"
+            )
+            time.sleep(wait)
+    assert last_err is not None
+    raise last_err
 
 
 def align_script_beats(
