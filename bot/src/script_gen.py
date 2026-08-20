@@ -9,7 +9,7 @@ from typing import Any, Literal
 import httpx
 
 from .config import GEMINI_API_KEY, USED_FACTS_PATH, USED_MEALS_PATH, USED_TOPICS_PATH
-from .facts import CATEGORY_HASHTAGS, FACTS, format_fact_caption
+from .facts import CATEGORY_HASHTAGS, FACT_CATEGORIES, FACTS, format_fact_caption
 from .meals import MEALS, format_meal_caption
 from .topics import STORIES, format_nutrition_caption
 
@@ -71,35 +71,139 @@ def _save_used(path, used: list[str]) -> None:
     path.write_text(json.dumps(used[-200:], indent=2))
 
 
-def pick_fact() -> dict:
-    used = _load_used(USED_FACTS_PATH)
-    known = {f["id"] for f in FACTS}
-    used = [uid for uid in used if uid in known]
-    unused = [f for f in FACTS if f["id"] not in used]
-    if not unused:
-        unused = list(FACTS)
-        used = []
-        _save_used(USED_FACTS_PATH, [])
+_USED_FACTS_KEEP = 8000
+_TITLE_STOP = {
+    "a", "an", "the", "and", "or", "to", "of", "in", "on", "it", "is", "are",
+    "that", "this", "you", "do", "they", "for", "with", "have", "has", "than",
+    "their", "can", "from", "was", "were", "be", "by",
+}
 
-    last_cat = None
-    if used:
-        last = next((f for f in FACTS if f["id"] == used[-1]), None)
-        if last:
-            last_cat = last.get("category")
-    rotated = [f for f in unused if f.get("category") != last_cat]
-    pool = rotated or unused
+
+def _fact_id_from_title(category: str, title: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", (title or "").lower()).strip("_")[:72]
+    cat = re.sub(r"[^a-z0-9]+", "_", (category or "fact").lower()).strip("_")
+    return f"{cat}_{slug}" if slug else f"{cat}_fact"
+
+
+def _norm_fact_title(title: str) -> str:
+    text = re.sub(r"[^a-z0-9\s]", " ", (title or "").lower())
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _title_tokens(title: str) -> set[str]:
+    return set(_norm_fact_title(title).split()) - _TITLE_STOP
+
+
+def _is_repeat_title(title: str, used_titles: list[str]) -> bool:
+    key = _norm_fact_title(title)
+    if not key:
+        return True
+    used_keys = {_norm_fact_title(t) for t in used_titles if t}
+    if key in used_keys:
+        return True
+    words = _title_tokens(title)
+    if len(words) < 3:
+        return False
+    for other in used_titles:
+        other_words = _title_tokens(other)
+        if len(other_words) < 3:
+            continue
+        overlap = len(words & other_words) / min(len(words), len(other_words))
+        if overlap >= 0.72:
+            return True
+    return False
+
+
+def _load_used_fact_entries() -> list[dict[str, str]]:
+    if not USED_FACTS_PATH.exists():
+        return []
+    try:
+        raw = json.loads(USED_FACTS_PATH.read_text())
+    except json.JSONDecodeError:
+        return []
+    items = raw if isinstance(raw, list) else raw.get("entries") if isinstance(raw, dict) else []
+    entries: list[dict[str, str]] = []
+    for item in items or []:
+        if isinstance(item, str):
+            known = next((f for f in FACTS if f["id"] == item), None)
+            entries.append(
+                {
+                    "id": item,
+                    "title": str(known["title"]) if known else item.replace("_", " "),
+                    "category": str(known.get("category") or "") if known else "",
+                }
+            )
+        elif isinstance(item, dict) and item.get("id"):
+            entries.append(
+                {
+                    "id": str(item["id"]),
+                    "title": str(item.get("title") or ""),
+                    "category": str(item.get("category") or ""),
+                }
+            )
+    return entries
+
+
+def _save_used_fact_entries(entries: list[dict[str, str]]) -> None:
+    USED_FACTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    USED_FACTS_PATH.write_text(json.dumps(entries[-_USED_FACTS_KEEP:], indent=2))
+
+
+def pick_fact_category() -> str:
+    entries = _load_used_fact_entries()
+    last_cat = ""
+    if entries:
+        last_cat = entries[-1].get("category") or ""
+        if not last_cat:
+            last = next((f for f in FACTS if f["id"] == entries[-1].get("id")), None)
+            last_cat = str(last.get("category") or "") if last else ""
+    pool = [c for c in FACT_CATEGORIES if c != last_cat] or list(FACT_CATEGORIES)
     return random.choice(pool)
 
 
-def mark_fact_used(fact_id: str) -> None:
-    used = _load_used(USED_FACTS_PATH)
-    if fact_id not in used:
-        used.append(fact_id)
-        _save_used(USED_FACTS_PATH, used)
+def _used_fact_titles() -> list[str]:
+    return [e["title"] for e in _load_used_fact_entries() if e.get("title")]
+
+
+def pick_fallback_fact() -> dict:
+    """Template bank only — used when Gemini cannot invent a new claim."""
+    used_ids = {e["id"] for e in _load_used_fact_entries()}
+    unused = [f for f in FACTS if f["id"] not in used_ids]
+    last_cat = None
+    entries = _load_used_fact_entries()
+    if entries:
+        last_cat = entries[-1].get("category") or None
+    pool = unused or list(FACTS)
+    rotated = [f for f in pool if f.get("category") != last_cat]
+    return random.choice(rotated or pool)
+
+
+def pick_fact() -> dict:
+    category = pick_fact_category()
+    invented = _gemini_invent_fact(category)
+    if invented:
+        return invented
+    print("   Gemini: invent skipped — using leftover template fact")
+    return pick_fallback_fact()
+
+
+def mark_fact_used(fact_id: str, title: str = "", category: str = "") -> None:
+    entries = _load_used_fact_entries()
+    if any(e.get("id") == fact_id for e in entries):
+        return
+    known = next((f for f in FACTS if f["id"] == fact_id), None)
+    entries.append(
+        {
+            "id": fact_id,
+            "title": title or str(known["title"] if known else fact_id),
+            "category": category or str(known.get("category") or "" if known else ""),
+        }
+    )
+    _save_used_fact_entries(entries)
 
 
 def unused_fact_ids() -> list[str]:
-    used = set(_load_used(USED_FACTS_PATH)) & {f["id"] for f in FACTS}
+    used = {e["id"] for e in _load_used_fact_entries()}
     return [f["id"] for f in FACTS if f["id"] not in used]
 
 
@@ -338,13 +442,16 @@ def _normalize_beats(raw: list[Any], fallback: list[dict[str, Any]]) -> list[dic
 
 
 def _default_hashtags(category: str) -> list[str]:
+    extra = CATEGORY_HASHTAGS.get(category) or [
+        re.sub(r"[^a-z0-9]+", "", category.lower()) or "curious"
+    ]
     return [
         "didyouknow",
         "facts",
         "reels",
         "shorts",
         "nibthefridgegoblin",
-        *CATEGORY_HASHTAGS.get(category, ["curious"]),
+        *extra,
     ]
 
 
@@ -487,6 +594,70 @@ Return ONLY JSON: beats (array of spoken, caption, image_prompt)
     return beats
 
 
+def _gemini_invent_fact(category: str) -> dict | None:
+    """Ask Gemini for a brand-new true fact in this genre. None if the API is down."""
+    if not GEMINI_API_KEY:
+        return None
+
+    all_used = _used_fact_titles() + [str(f.get("title") or "") for f in FACTS]
+    all_used = [t for t in all_used if t]
+    blocked = all_used[-140:]
+    blocked_lines = "\n".join(f"- {t}" for t in blocked) or "- (none yet)"
+    last_err = ""
+    for attempt in range(3):
+        prompt = f"""
+Pick ONE brand-new, well-established curiosity fact in this category: {category}
+(Attempt {attempt + 1} of 3 — if this is a retry, pick a more obscure but still true fact.)
+
+Already used — do NOT repeat, rephrase, or cover the same subject:
+{blocked_lines}
+
+The fact must be:
+- True and widely documented (textbooks, encyclopedias, official records, reputable science)
+- Specific (a concrete claim with a real detail — not "sports are popular")
+- A different subject from every line above
+- Safe: no medical advice, no conspiracy, no cruelty, no living-person gossip
+
+Then write 4 short truth beats (plain English, not a lecture). These are the SCIENCE only;
+another pass will make them charismatic.
+
+Return ONLY JSON:
+title: lowercase short claim (e.g. "octopuses have three hearts")
+category: {category}
+beats: array of 4 objects with spoken, caption (2-6 words), image_prompt
+  (one isolated object, white background, no text, no mascot)
+"""
+        parsed, model, last_err = _gemini_json(prompt)
+        if not parsed:
+            continue
+        title = str(parsed.get("title") or "").strip()
+        if not title or _is_repeat_title(title, all_used):
+            print(f"   Gemini: invented a repeat ({title!r}) — retrying")
+            all_used.append(title)
+            blocked.append(title)
+            blocked_lines = "\n".join(f"- {t}" for t in blocked[-140:])
+            continue
+        beats = parsed.get("beats") or []
+        if not isinstance(beats, list) or len(beats) < 3:
+            continue
+        fact_id = _fact_id_from_title(category, title)
+        if any(e.get("id") == fact_id for e in _load_used_fact_entries()):
+            print(f"   Gemini: invented a used id ({fact_id}) — retrying")
+            blocked.append(title)
+            continue
+        print(f"   Gemini: new {category} fact via {model}: {title}")
+        return {
+            "id": fact_id,
+            "category": category,
+            "title": title[0].lower() + title[1:] if title else title,
+            "beats": beats,
+            "source": "gemini",
+        }
+    if last_err:
+        print(f"   Gemini: invent failed ({last_err})")
+    return None
+
+
 def _gemini_fact_script(fact: dict) -> ReelScript | None:
     if not GEMINI_API_KEY:
         print("   Gemini: no GEMINI_API_KEY — using template script")
@@ -527,7 +698,7 @@ title, hashtags (8 tags without #), beats (array of spoken, caption, image_promp
 
     beats = _prepare_fact_beats(fact, parsed.get("beats") or [])
     beats = _expand_fact_beats(fact, beats)
-    title = str(parsed.get("title") or fact["title"]).strip()
+    title = str(fact.get("title") or parsed.get("title") or "").strip()
     fact_out = {**fact, "title": title, "beats": beats}
     print(f"   Gemini: fact script via {model} ({_word_count(beats)} words)")
     return _script_from_beats(
@@ -810,11 +981,11 @@ def generate_script(
                 story = match
         return _gemini_script(story) or _story_script(story)
 
-    fact = pick_fact()
-    if topic and "id" in topic:
-        match = next((f for f in FACTS if f["id"] == topic["id"]), None)
-        if match:
-            fact = match
+    fact = None
+    if topic and topic.get("id"):
+        fact = next((f for f in FACTS if f["id"] == topic["id"]), None) or topic
+    if fact is None:
+        fact = pick_fact()
     script = _gemini_fact_script(fact) or _fact_script(fact)
     if _word_count(script.beats) < _MIN_VOICEOVER_WORDS and GEMINI_API_KEY:
         expanded = _expand_fact_beats(fact, script.beats)

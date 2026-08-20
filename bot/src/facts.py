@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Curiosity facts. Spoken like a charismatic goblin, not a quiz-show kid.
+# Fallback curiosity facts if Gemini cannot invent a new topic.
+# Daily runs generate fresh facts; this bank is only used when the API is down.
 # [pause] marks become real TTS breaths.
 FACTS: list[dict[str, Any]] = [
     {
@@ -981,12 +982,74 @@ FACTS: list[dict[str, Any]] = [
 ]
 
 
+# Rotating genres for generated fact reels. Add a key here to unlock a new bucket.
+FACT_CATEGORIES = [
+    "animals",
+    "sports",
+    "psychology",
+    "body",
+    "nature",
+    "food",
+    "space",
+    "history",
+    "ocean",
+    "inventions",
+    "music",
+    "geography",
+    "weather",
+    "chemistry",
+    "physics",
+    "plants",
+    "insects",
+    "dinosaurs",
+    "architecture",
+    "language",
+    "money",
+    "sleep",
+    "tech",
+    "cars",
+    "aviation",
+    "olympics",
+    "games",
+    "art",
+    "archaeology",
+    "cities",
+    "records",
+    "weird_science",
+]
+
 CATEGORY_HASHTAGS = {
     "animals": ["animals", "wildlife", "naturefacts"],
-    "food": ["foodfacts", "didyouknowfood", "scienceoffood"],
-    "psychology": ["psychology", "darktriad", "mindfacts"],
+    "sports": ["sports", "sportsfacts", "athletics"],
+    "psychology": ["psychology", "mindfacts", "brainfacts"],
     "body": ["humanbody", "bodyfacts", "sciencefacts"],
     "nature": ["nature", "earthfacts", "science"],
+    "food": ["foodfacts", "didyouknowfood", "scienceoffood"],
+    "space": ["space", "astronomy", "nasa"],
+    "history": ["history", "historyfacts", "didyouknow"],
+    "ocean": ["ocean", "marinebiology", "seafacts"],
+    "inventions": ["inventions", "innovation", "techhistory"],
+    "music": ["music", "musicfacts", "musichistory"],
+    "geography": ["geography", "earthfacts", "maps"],
+    "weather": ["weather", "climate", "science"],
+    "chemistry": ["chemistry", "science", "stem"],
+    "physics": ["physics", "science", "mindblown"],
+    "plants": ["plants", "botany", "naturefacts"],
+    "insects": ["insects", "bugs", "naturefacts"],
+    "dinosaurs": ["dinosaurs", "paleontology", "prehistoric"],
+    "architecture": ["architecture", "design", "historyfacts"],
+    "language": ["language", "linguistics", "words"],
+    "money": ["money", "economics", "financefacts"],
+    "sleep": ["sleep", "brainfacts", "sciencefacts"],
+    "tech": ["tech", "computers", "innovation"],
+    "cars": ["cars", "automotive", "engineering"],
+    "aviation": ["aviation", "planes", "engineering"],
+    "olympics": ["olympics", "sports", "sportsfacts"],
+    "games": ["gaming", "videogames", "gamer"],
+    "art": ["art", "arthistory", "museum"],
+    "archaeology": ["archaeology", "history", "ancient"],
+    "cities": ["cities", "geography", "travel"],
+    "records": ["worldrecords", "facts", "mindblown"],
     "weird_science": ["science", "physics", "mindblown"],
 }
 

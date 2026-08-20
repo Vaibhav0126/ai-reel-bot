@@ -87,7 +87,7 @@ def run_daily(post: bool | None = None, reel_type: ReelType = "fact") -> dict:
     elif reel_type == "fridge":
         mark_topic_used(script.topic_id)
     else:
-        mark_fact_used(script.topic_id)
+        mark_fact_used(script.topic_id, title=script.topic, category=script.category)
 
     result = {
         "output_dir": str(out_dir),
