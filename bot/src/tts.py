@@ -11,6 +11,32 @@ import imageio_ffmpeg
 
 from .config import EDGE_TTS_PITCH, EDGE_TTS_RATE, EDGE_TTS_VOICE
 
+_PAUSE_MARK_RE = re.compile(r"\[pause(?::(short|long|beat))?\]", re.I)
+_PAUSE_MS = {"short": 200, "beat": 280, "long": 650}
+_PAUSE_PLACEHOLDER_RE = re.compile(r"@@PAUSE(\d+)@@")
+
+
+def strip_pause_marks(text: str) -> str:
+    return re.sub(r"\s+", " ", _PAUSE_MARK_RE.sub(" ", text or "")).strip()
+
+
+def _tts_text_with_placeholders(text: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        kind = (match.group(1) or "").lower()
+        ms = _PAUSE_MS.get(kind, 400)
+        return f" @@PAUSE{ms}@@ "
+
+    return re.sub(r"\s+", " ", _PAUSE_MARK_RE.sub(repl, text or "")).strip()
+
+
+def _inject_ssml_breaks(chunks: list[bytes | str]) -> list[bytes]:
+    out: list[bytes] = []
+    for chunk in chunks:
+        text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+        text = _PAUSE_PLACEHOLDER_RE.sub(r"<break time='\1ms'/>", text)
+        out.append(text.encode("utf-8"))
+    return out
+
 
 @dataclass
 class WordTiming:
@@ -60,11 +86,13 @@ def _normalize_token(text: str) -> str:
 
 async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> VoiceResult:
     communicate = edge_tts.Communicate(
-        text,
+        _tts_text_with_placeholders(text),
         voice=voice,
         rate=EDGE_TTS_RATE,
         pitch=EDGE_TTS_PITCH,
+        boundary="WordBoundary",
     )
+    communicate.texts = _inject_ssml_breaks(list(communicate.texts))
     words: list[WordTiming] = []
     audio_chunks: list[bytes] = []
     sentences: list[SentenceTiming] = []
@@ -89,13 +117,13 @@ async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> Voi
             words.extend(_words_from_sentence(sent.text, sent.start, sent.end))
 
     if not words:
-        fallback = re.findall(r"[A-Za-z0-9']+", text)
+        fallback = re.findall(r"[A-Za-z0-9']+", strip_pause_marks(text))
         dur = max(8.0, len(fallback) * 0.28)
         words = _words_from_sentence(" ".join(fallback) or text, 0.0, dur)
 
     if not sentences and words:
         # Rebuild rough sentence spans from punctuation in original text
-        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", strip_pause_marks(text)) if p.strip()]
         if parts:
             total_chars = sum(max(len(p), 1) for p in parts) or 1
             cursor = words[0].start
@@ -150,7 +178,11 @@ def align_script_beats(
     Map (beat_name, bubble_text) to real audio times using word alignment.
     Returns list of (beat, text, start, end).
     """
-    cleaned = [(name, text.strip()) for name, text in beat_texts if text and text.strip()]
+    cleaned = [
+        (name, strip_pause_marks(text))
+        for name, text in beat_texts
+        if strip_pause_marks(text)
+    ]
     if not cleaned:
         return [("hook", "", 0.0, duration)]
 

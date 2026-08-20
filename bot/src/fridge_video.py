@@ -125,6 +125,22 @@ def _speech_bubble(frame: Image.Image, text: str, anchor_x: int, anchor_y: int) 
         draw.text((x + pad_x, y + pad_y + i * line_h), ln, font=font, fill=CAPTION_STROKE)
 
 
+def _item_sticker(img: Image.Image, max_size: int) -> Image.Image:
+    rgba = img.convert("RGBA")
+    extrema = rgba.getextrema()
+    has_alpha = extrema[3][0] < 250 if extrema and len(extrema) > 3 else False
+    if not has_alpha:
+        from .cutout import cutout_object
+
+        rgba = cutout_object(rgba)
+    bbox = rgba.getbbox()
+    if bbox:
+        rgba = rgba.crop(bbox)
+    w, h = rgba.size
+    scale = min(max_size / max(w, 1), max_size / max(h, 1))
+    return rgba.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
+
+
 def _hand_anchor(pose_name: str, nib_w: int, nib_h: int) -> tuple[int, int]:
     anchors = {
         "talk_thumbs_up": (0.82, 0.42),
@@ -176,6 +192,14 @@ def render_fridge_reel(script: ReelScript, out_dir: Path) -> Path:
 
     fridge = _fridge_base()
     prop = held_prop(script.item_emoji, size=280)
+    if script.beat_image_paths:
+        item_path = Path(script.beat_image_paths[0])
+        if item_path.exists():
+            try:
+                prop = _item_sticker(Image.open(item_path), 320)
+                print(f"   Fridge item art: {item_path.name}")
+            except Exception as exc:
+                print(f"   Fridge item art skipped ({type(exc).__name__}) — using cartoon prop")
 
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [

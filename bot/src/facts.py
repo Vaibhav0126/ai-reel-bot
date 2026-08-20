@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
-# Curiosity facts. Each reel is 5–6 beats totaling ~80–100 spoken words (~30 seconds).
+# Curiosity facts. Spoken like a charismatic goblin, not a quiz-show kid.
+# [pause] marks become real TTS breaths.
 FACTS: list[dict[str, Any]] = [
     {
         "id": "octopus_three_hearts",
@@ -10,17 +12,17 @@ FACTS: list[dict[str, Any]] = [
         "title": "octopuses have three hearts",
         "beats": [
             {
-                "spoken": "Do you know octopuses have three hearts?",
+                "spoken": "Don't look away. [pause] This sea goblin is walking around with three hearts.",
                 "caption": "three hearts",
                 "image_prompt": "cute cartoon octopus with three small red hearts floating beside it",
             },
             {
-                "spoken": "Two pump blood to the gills. One pumps blood to the rest of the body.",
+                "spoken": "Two hearts are on gill duty. [pause] The third one bosses the rest of the body.",
                 "caption": "two for gills",
                 "image_prompt": "simple cartoon octopus gills with two tiny hearts pumping",
             },
             {
-                "spoken": "When it swims, the body heart actually stops. That is why they prefer crawling.",
+                "spoken": "And when it swims? [pause:short] That body heart just… stops. That's why it would rather crawl.",
                 "caption": "heart stops swimming",
                 "image_prompt": "cartoon octopus walking on ocean floor instead of swimming",
             },
@@ -37,17 +39,17 @@ FACTS: list[dict[str, Any]] = [
         "title": "crows remember faces",
         "beats": [
             {
-                "spoken": "Do you know crows can remember a human face for years?",
+                "spoken": "A crow can hold a grudge longer than your ex. [pause] Years. Faces included.",
                 "caption": "they remember you",
                 "image_prompt": "cartoon crow staring at a simple human face mask",
             },
             {
-                "spoken": "If you were mean, they tell their friends. The whole flock can hold a grudge.",
+                "spoken": "You were mean? [pause] They tell the whole flock. Group chat with wings.",
                 "caption": "they tell friends",
                 "image_prompt": "three cartoon crows whispering together on a wire",
             },
             {
-                "spoken": "Be nice and they may even bring you shiny gifts.",
+                "spoken": "Be nice and they might pay you in shiny junk. [pause] Goblin-approved gifts.",
                 "caption": "shiny gifts",
                 "image_prompt": "cartoon crow dropping a shiny bottle cap as a gift",
             },
@@ -64,22 +66,22 @@ FACTS: list[dict[str, Any]] = [
         "title": "sharks are older than trees",
         "beats": [
             {
-                "spoken": "Do you know sharks are older than trees?",
+                "spoken": "Trees are the new kids. [pause] Sharks were already hunting.",
                 "caption": "older than trees",
                 "image_prompt": "cartoon shark swimming past a tiny cartoon tree",
             },
             {
-                "spoken": "Sharks showed up around four hundred million years ago. Trees came later.",
+                "spoken": "Four hundred million years on this planet. [pause] Trees hadn't even shown up yet.",
                 "caption": "400 million years",
                 "image_prompt": "simple prehistoric cartoon ocean with a primitive shark",
             },
             {
-                "spoken": "They survived ice ages, extinction waves, and still look like a warning sticker.",
+                "spoken": "Ice ages. Extinction waves. [pause] Still looking like a warning sticker.",
                 "caption": "still here",
                 "image_prompt": "cartoon shark silhouette like a warning sign",
             },
             {
-                "spoken": "The ocean had apex predators before forests even existed.",
+                "spoken": "The ocean had killers before the forest even existed. [pause] Trees are the new kids.",
                 "caption": "before forests",
                 "image_prompt": "empty land with no trees next to a cartoon ocean shark",
             },
@@ -91,17 +93,17 @@ FACTS: list[dict[str, Any]] = [
         "title": "axolotls can regenerate",
         "beats": [
             {
-                "spoken": "Do you know axolotls can grow back entire limbs?",
+                "spoken": "Lose an arm. Grow a new one. [pause] This salamander actually does it.",
                 "caption": "grow limbs back",
                 "image_prompt": "cute cartoon pink axolotl smiling",
             },
             {
-                "spoken": "Legs, tails, parts of the heart and even bits of the brain. No scar drama.",
+                "spoken": "Legs. Tails. Chunks of heart. [pause] Even bits of brain. No scar drama.",
                 "caption": "heart and brain",
                 "image_prompt": "cartoon axolotl with a tiny regenerated glowing limb",
             },
             {
-                "spoken": "Scientists study them hoping humans can steal that trick someday.",
+                "spoken": "Scientists are taking notes. [pause] Humans want that trick.",
                 "caption": "science wants this",
                 "image_prompt": "cartoon microscope looking at a smiling axolotl",
             },
@@ -118,17 +120,17 @@ FACTS: list[dict[str, Any]] = [
         "title": "goats have rectangle pupils",
         "beats": [
             {
-                "spoken": "Do you know goat pupils are rectangles, not circles?",
+                "spoken": "Look a goat in the eye. [pause] Those pupils are rectangles.",
                 "caption": "rectangle eyes",
                 "image_prompt": "cartoon goat face with horizontal rectangle pupils",
             },
             {
-                "spoken": "That shape gives them almost panoramic vision to spot predators.",
+                "spoken": "That rectangle eye is a security camera. [pause] Almost panoramic. Predators hate it.",
                 "caption": "panoramic vision",
                 "image_prompt": "cartoon wide landscape seen through goat eyes",
             },
             {
-                "spoken": "When they put their head down to eat, the pupils rotate to stay level.",
+                "spoken": "Head down to eat? [pause] The pupils rotate so the world stays level. Fancy.",
                 "caption": "pupils rotate",
                 "image_prompt": "cartoon goat grazing with level rectangle pupils",
             },
@@ -145,12 +147,12 @@ FACTS: list[dict[str, Any]] = [
         "title": "wombats poop cubes",
         "beats": [
             {
-                "spoken": "Do you know wombats poop in cubes?",
+                "spoken": "I need five seconds. [pause] Wombats poop cubes. I am not joking.",
                 "caption": "cube poop",
                 "image_prompt": "cartoon wombat next to a few neat brown cubes",
             },
             {
-                "spoken": "The cubes stack so they can mark territory without rolling downhill.",
+                "spoken": "The cubes stack. [pause] Territory markers that don't roll downhill. Architecture.",
                 "caption": "they stack",
                 "image_prompt": "cartoon cube poops stacked on a hillside that does not roll",
             },
@@ -172,17 +174,17 @@ FACTS: list[dict[str, Any]] = [
         "title": "honey does not spoil",
         "beats": [
             {
-                "spoken": "Do you know honey basically never spoils?",
+                "spoken": "This jar can outlive you. [pause] Honey basically never dies.",
                 "caption": "never spoils",
                 "image_prompt": "cartoon jar of golden honey with a bee",
             },
             {
-                "spoken": "Low water, high sugar, and a little hydrogen peroxide. Bacteria hate that combo.",
+                "spoken": "Low water. High sugar. A splash of hydrogen peroxide. [pause] Bacteria hate that combo.",
                 "caption": "bacteria hate it",
                 "image_prompt": "cartoon bacteria running away from a honey jar",
             },
             {
-                "spoken": "Archaeologists found thousand-year-old honey that was still edible.",
+                "spoken": "Archaeologists found thousand-year-old honey. [pause] Still edible. Still smug.",
                 "caption": "1000 year honey",
                 "image_prompt": "cartoon ancient pot of honey in a tomb",
             },
@@ -199,17 +201,17 @@ FACTS: list[dict[str, Any]] = [
         "title": "chili heat is pain not taste",
         "beats": [
             {
-                "spoken": "Do you know spicy is not a flavor? It is your nerves yelling.",
+                "spoken": "Spicy is not a flavor. [pause] It is your nerves screaming.",
                 "caption": "not a flavor",
                 "image_prompt": "cartoon red chili pepper with a warning sign",
             },
             {
-                "spoken": "Capsaicin tricks pain receptors that also detect heat.",
+                "spoken": "Capsaicin tricks pain receptors that also detect heat. [pause] Your mouth files a false alarm.",
                 "caption": "pain receptors",
                 "image_prompt": "cartoon tongue with little alarm bells",
             },
             {
-                "spoken": "Your brain thinks you are on fire. You are not. You just ate a plant's defense system.",
+                "spoken": "Your brain thinks you are on fire. [pause] You are not. You ate a plant's defense system.",
                 "caption": "plant defense",
                 "image_prompt": "cartoon plant spraying tiny chili flames",
             },
@@ -226,12 +228,12 @@ FACTS: list[dict[str, Any]] = [
         "title": "bananas are berries",
         "beats": [
             {
-                "spoken": "Do you know bananas are berries, but strawberries are not?",
+                "spoken": "The grocery aisle has been lying. [pause] Bananas are berries. Strawberries are not.",
                 "caption": "banana is a berry",
                 "image_prompt": "cartoon banana wearing a berry name tag",
             },
             {
-                "spoken": "Botany says a berry is fruit from one flower with seeds inside the flesh.",
+                "spoken": "Botany's definition is petty. [pause] One flower. Seeds inside the flesh. That's a berry.",
                 "caption": "seeds inside",
                 "image_prompt": "simple cartoon cross section of a banana",
             },
@@ -253,12 +255,12 @@ FACTS: list[dict[str, Any]] = [
         "title": "most wasabi is not wasabi",
         "beats": [
             {
-                "spoken": "Do you know most sushi wasabi is not wasabi?",
+                "spoken": "That green paste next to your sushi? [pause] Probably not wasabi.",
                 "caption": "fake wasabi",
                 "image_prompt": "cartoon green sushi paste dollop",
             },
             {
-                "spoken": "It is usually horseradish, mustard, and green coloring.",
+                "spoken": "It's usually horseradish, mustard, and green dye. [pause] A costume in a little pile.",
                 "caption": "horseradish mix",
                 "image_prompt": "cartoon horseradish root with green paint bucket",
             },
@@ -280,12 +282,12 @@ FACTS: list[dict[str, Any]] = [
         "title": "pineapple eats you back",
         "beats": [
             {
-                "spoken": "Do you know pineapple tries to digest you while you eat it?",
+                "spoken": "Pineapple is eating you back. [pause] Stay with me.",
                 "caption": "it eats you",
                 "image_prompt": "cartoon pineapple with tiny teeth smiling",
             },
             {
-                "spoken": "It has bromelain, an enzyme that breaks down protein. Including your tongue.",
+                "spoken": "Bromelain. [pause] An enzyme that breaks down protein. Including your tongue.",
                 "caption": "bromelain enzyme",
                 "image_prompt": "cartoon enzyme Pac-Man eating protein shapes",
             },
@@ -307,7 +309,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "vanilla is an orchid",
         "beats": [
             {
-                "spoken": "Do you know vanilla comes from an orchid, not a bean farm cartoon?",
+                "spoken": "Vanilla is not a cute bean cartoon. [pause] It is a high-maintenance orchid.",
                 "caption": "it is an orchid",
                 "image_prompt": "cartoon vanilla orchid flower with a long pod",
             },
@@ -334,7 +336,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "the dark triad",
         "beats": [
             {
-                "spoken": "Do you know the dark triad is three personality traits that cluster together?",
+                "spoken": "Three traits travel in a pack. [pause] Charm. Calculation. Ice.",
                 "caption": "three dark traits",
                 "image_prompt": "three simple cartoon masks: charming, calculating, cold",
             },
@@ -361,7 +363,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "narcissism needs supply",
         "beats": [
             {
-                "spoken": "Do you know narcissism is less about loving yourself and more about needing applause?",
+                "spoken": "This is not self-love. [pause] It is an applause addiction.",
                 "caption": "needs applause",
                 "image_prompt": "cartoon mirror reflecting a trophy instead of a face",
             },
@@ -388,7 +390,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "Machiavellianism is strategy",
         "beats": [
             {
-                "spoken": "Do you know Machiavellianism is the chess-player trait of the dark triad?",
+                "spoken": "Some people don't argue. [pause] They play chess with your life.",
                 "caption": "chess player trait",
                 "image_prompt": "cartoon chessboard with a sly smile pawn",
             },
@@ -415,7 +417,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "gossip is social glue",
         "beats": [
             {
-                "spoken": "Do you know gossip probably evolved as social glue, not just meanness?",
+                "spoken": "Gossip is not just mean. [pause] Your brain treats it like survival intel.",
                 "caption": "social glue",
                 "image_prompt": "cartoon two faces whispering with a glue bottle",
             },
@@ -442,7 +444,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "brains love bad news",
         "beats": [
             {
-                "spoken": "Do you know your brain weighs one insult heavier than many compliments?",
+                "spoken": "One insult outweighs a stack of compliments. [pause] Your brain is built that way.",
                 "caption": "insults weigh more",
                 "image_prompt": "cartoon scale with one dark comment outweighing hearts",
             },
@@ -469,7 +471,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "your mind wanders on purpose",
         "beats": [
             {
-                "spoken": "Do you know your brain has a default mode that daydreams when you are idle?",
+                "spoken": "When you go idle, your brain doesn't. [pause] It starts writing lore.",
                 "caption": "default daydream",
                 "image_prompt": "cartoon brain sitting on a cloud daydreaming",
             },
@@ -496,7 +498,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "you cannot tickle yourself",
         "beats": [
             {
-                "spoken": "Do you know you usually cannot tickle yourself?",
+                "spoken": "You cannot tickle yourself. [pause] Your brain ruins the surprise on purpose.",
                 "caption": "cannot self-tickle",
                 "image_prompt": "cartoon hand trying to tickle a cartoon foot unsuccessfully",
             },
@@ -523,7 +525,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "yawns are contagious",
         "beats": [
             {
-                "spoken": "Do you know yawns can jump from brain to brain?",
+                "spoken": "Yawning is a mind virus. [pause] Even reading this can set one off.",
                 "caption": "yawns jump brains",
                 "image_prompt": "cartoon yawn spreading between two simple faces",
             },
@@ -550,7 +552,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "your gut has a second brain",
         "beats": [
             {
-                "spoken": "Do you know your gut has its own nervous system with hundreds of millions of neurons?",
+                "spoken": "You have a second brain. [pause] It lives in your gut.",
                 "caption": "second brain",
                 "image_prompt": "cartoon stomach wearing tiny glasses like a brain",
             },
@@ -577,7 +579,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "fingerprints form in the womb",
         "beats": [
             {
-                "spoken": "Do you know fingerprints form in the womb from tiny skin stress patterns?",
+                "spoken": "You had an ID before you had a name. [pause] Fingerprints, drawn in the womb.",
                 "caption": "formed in womb",
                 "image_prompt": "cartoon baby hand with swirl fingerprints",
             },
@@ -604,7 +606,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "your skeleton rebuilds",
         "beats": [
             {
-                "spoken": "Do you know your skeleton is constantly being torn down and rebuilt?",
+                "spoken": "The skeleton you have today is a renovation. [pause] It keeps tearing itself down.",
                 "caption": "bones rebuild",
                 "image_prompt": "cartoon bone with tiny construction workers",
             },
@@ -631,7 +633,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "flavor is mostly smell",
         "beats": [
             {
-                "spoken": "Do you know most of flavor is smell, not the tongue?",
+                "spoken": "Most of flavor is not the tongue. [pause] The nose is running the show.",
                 "caption": "flavor is smell",
                 "image_prompt": "cartoon nose bigger than a cartoon tongue",
             },
@@ -658,7 +660,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "trees share through fungi",
         "beats": [
             {
-                "spoken": "Do you know trees can share food and warnings through underground fungi?",
+                "spoken": "Trees talk underground. [pause] Through a fungal internet.",
                 "caption": "trees share",
                 "image_prompt": "cartoon trees connected by glowing underground threads",
             },
@@ -685,7 +687,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "that rain smell has a name",
         "beats": [
             {
-                "spoken": "Do you know the smell after rain has a name? Petrichor.",
+                "spoken": "That smell after rain has a name. [pause] Petrichor.",
                 "caption": "petrichor",
                 "image_prompt": "cartoon rain hitting dry earth with little scent swirls",
             },
@@ -712,7 +714,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "volcanoes can make lightning",
         "beats": [
             {
-                "spoken": "Do you know volcanoes can make their own lightning?",
+                "spoken": "Volcanoes can make lightning. [pause] No storm required.",
                 "caption": "volcano lightning",
                 "image_prompt": "cartoon volcano with lightning in the ash cloud",
             },
@@ -739,7 +741,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "the moon has moonquakes",
         "beats": [
             {
-                "spoken": "Do you know the moon has moonquakes?",
+                "spoken": "The moon is not a dead rock. [pause] It has moonquakes.",
                 "caption": "moonquakes",
                 "image_prompt": "cartoon moon with little shake lines",
             },
@@ -766,7 +768,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "ants do not have lungs",
         "beats": [
             {
-                "spoken": "Do you know ants do not have lungs?",
+                "spoken": "Ants do not have lungs. [pause] They breathe through their armor.",
                 "caption": "no lungs",
                 "image_prompt": "cartoon ant with tiny air holes along its body",
             },
@@ -793,7 +795,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "auroras are solar leftovers",
         "beats": [
             {
-                "spoken": "Do you know the northern lights are the sun throwing leftover particles at Earth?",
+                "spoken": "The northern lights are leftover sun. [pause] Slapping Earth's sky.",
                 "caption": "sun leftovers",
                 "image_prompt": "cartoon sun tossing sparkles at planet earth",
             },
@@ -820,7 +822,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "atoms are mostly empty",
         "beats": [
             {
-                "spoken": "Do you know atoms are almost entirely empty space?",
+                "spoken": "You are mostly empty space. [pause] Atoms are a magic trick.",
                 "caption": "mostly empty",
                 "image_prompt": "cartoon atom with a tiny nucleus and huge empty rings",
             },
@@ -847,7 +849,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "fast clocks run slow",
         "beats": [
             {
-                "spoken": "Do you know clocks run slower when they move faster? Relativity is petty like that.",
+                "spoken": "Clocks get petty when they move faster. [pause] Time actually slows.",
                 "caption": "fast clocks lag",
                 "image_prompt": "cartoon rocket with a slow clock vs a sitting clock",
             },
@@ -874,7 +876,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "hot water can freeze first",
         "beats": [
             {
-                "spoken": "Do you know hot water can freeze faster than cold water? The Mpemba effect.",
+                "spoken": "Hot water can freeze first. [pause] Science still argues about it.",
                 "caption": "hot can freeze first",
                 "image_prompt": "cartoon steaming mug racing a cold glass to ice",
             },
@@ -901,7 +903,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "glass is not a slow liquid",
         "beats": [
             {
-                "spoken": "Do you know old windows being thicker at the bottom is not glass flowing like syrup?",
+                "spoken": "Old windows thicker at the bottom? [pause] Not because glass is dripping.",
                 "caption": "glass is not syrup",
                 "image_prompt": "cartoon window pane thicker at the bottom",
             },
@@ -928,7 +930,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "a light year is distance",
         "beats": [
             {
-                "spoken": "Do you know a light year is a distance, not a time?",
+                "spoken": "A light year is not a time. [pause] It is a distance wearing a costume.",
                 "caption": "it is distance",
                 "image_prompt": "cartoon ruler stretching across stars",
             },
@@ -955,7 +957,7 @@ FACTS: list[dict[str, Any]] = [
         "title": "empty space is not empty",
         "beats": [
             {
-                "spoken": "Do you know empty space is not empty? It fizzes with virtual particles.",
+                "spoken": "Empty space is not empty. [pause] It fizzes.",
                 "caption": "space fizzes",
                 "image_prompt": "cartoon empty box full of tiny spark particles",
             },
@@ -992,6 +994,8 @@ CATEGORY_HASHTAGS = {
 def format_fact_caption(fact: dict[str, Any], hashtags: list[str] | None = None) -> str:
     title = fact["title"]
     spoken = " ".join(b["spoken"] for b in fact.get("beats") or [])
+    spoken = re.sub(r"\[pause(?::\w+)?\]", " ", spoken)
+    spoken = re.sub(r"\s+", " ", spoken).strip()
     recap = spoken[:220].rsplit(" ", 1)[0] + "…" if len(spoken) > 220 else spoken
     tags = hashtags or (
         ["didyouknow", "facts", "reels", "nibthefridgegoblin"]

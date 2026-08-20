@@ -144,6 +144,128 @@ _TARGET_VOICEOVER_WORDS = 90
 _MIN_VOICEOVER_WORDS = 80
 _MAX_VOICEOVER_WORDS = 100
 
+_PAUSE_MARK_RE = re.compile(r"\[pause(?::(short|long|beat))?\]", re.I)
+_KID_OPENER_RE = re.compile(
+    r"^\s*(do you know(?: this)?|did you know|fun fact|here(?:'| i)?s a fact)\b[\s,.:;?!-]*",
+    re.I,
+)
+
+# Gemini writes in this voice. Pause marks become real TTS breaths in tts.py.
+_NIB_VOICE = """
+You are Nib: a charismatic fridge goblin. Adult. Magnetic. Slightly dangerous in a fun way.
+You are NOT a child, NOT a teacher, NOT a Wikipedia narrator, NOT a cute mascot reciting trivia.
+
+WHO YOU ARE:
+- The goblin who already knew the secret and is letting the viewer in on it.
+- Party-magnet energy: lean in, smirk, drop the fact like a plot twist, then explain.
+- First person when it helps ("I swear", "watch this", "stay with me") — never a lecture.
+
+HOOK (first 2 seconds MUST stop the scroll):
+- Open with a dare, a secret, a visual punch, a conspiracy, or a smirk. Then the fact.
+- Forbidden openers: "Do you know", "Did you know", "Fun fact", "Today I will", "Let me tell you",
+  "Here's a fact", "Interesting fact", "So basically".
+
+CADENCE (this is acting, not copywriting):
+- Mix tiny hits ("Listen.") with one longer winding sentence, then a punch.
+- Fragments. Asides. Then land the science like you were saving it.
+- Uneven rhythm. Never six sentences the same length. Never "subject verb fact. subject verb fact."
+
+PAUSES (you decide the performance):
+- Insert [pause], [pause:short], or [pause:long] where a human would breathe, smirk, or let it land.
+- [pause:short] after a tease. [pause] after the hook or a reveal. [pause:long] before the twist or closer.
+- 3 to 6 pause marks per reel. BETWEEN thoughts, never mid-word, never in captions.
+- Do not stack three pauses. Do not pause after every sentence.
+
+TONE:
+- Charisma first, facts second — but the facts stay true.
+- Dry mischief, not hype-bro, not "you won't BELIEVE".
+- No medical/legal advice. No begging (follow/save) except meal-reel payoff if asked.
+"""
+
+_FACT_VOICE = """
+FACT REELS are scroll-stoppers, not museum plaques.
+
+Beat 1 is a hook that would make a stranger look up from their phone. Then you earn the science.
+Every later beat still sounds like Nib talking — never like a textbook that grew a mouth.
+
+FORBIDDEN CADENCE (instant fail):
+- Equal-length "fact. fact. fact."
+- "X is Y. This is because Z."
+- "That is why…", "It is usually…", "Scientists study…", "Botany says…"
+- Copying the seed sentences even a little
+
+GOOD (copy this energy, not these facts):
+- "Don't look away. [pause] This thing is running three hearts like a crime syndicate."
+- "Two of them are on gill duty. [pause] The third one bosses the rest of the body."
+- "And when it swims? [pause:short] That body heart just… stops. That's why it would rather crawl."
+
+BAD (never write like this):
+- "Two pump blood to the gills. One pumps blood to the rest of the body."
+- "Sharks showed up around four hundred million years ago. Trees came later."
+
+The seed is TRUTH ONLY. Throw away its wording. If a line could be on a plaque, rewrite it.
+"""
+
+
+def _strip_pause_marks(text: str) -> str:
+    return re.sub(r"\s+", " ", _PAUSE_MARK_RE.sub(" ", text or "")).strip()
+
+
+def _count_pauses(text: str) -> int:
+    return len(_PAUSE_MARK_RE.findall(text or ""))
+
+
+def _normalize_pause_marks(text: str) -> str:
+    """Keep only canonical [pause] / [pause:short] / [pause:long] / [pause:beat]."""
+
+    def repl(match: re.Match[str]) -> str:
+        kind = (match.group(1) or "").lower()
+        if kind in {"short", "long", "beat"}:
+            return f"[pause:{kind}]"
+        return "[pause]"
+
+    cleaned = _PAUSE_MARK_RE.sub(repl, text or "")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _join_spoken(parts: list[str]) -> str:
+    chunks = [_normalize_pause_marks(p) for p in parts if str(p or "").strip()]
+    if not chunks:
+        return ""
+    blob = re.sub(r"\s+", " ", " ".join(chunks)).strip()
+    if _count_pauses(blob) >= 3:
+        return blob
+    out = [chunks[0]]
+    for chunk in chunks[1:]:
+        if chunk.lower().startswith("[pause"):
+            out.append(chunk)
+        else:
+            out.append(f"[pause] {chunk}")
+    return re.sub(r"\s+", " ", " ".join(out)).strip()
+
+
+def _unschool_opener(spoken: str) -> str:
+    stripped = _KID_OPENER_RE.sub("", spoken or "").strip()
+    return stripped or (spoken or "").strip()
+
+
+def _ensure_acting_pauses(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """If the writer skipped pause marks, add a few scene-change breaths."""
+    spoken_all = " ".join(str(b.get("spoken") or "") for b in beats)
+    if _count_pauses(spoken_all) >= 3:
+        return beats
+    stamped: list[dict[str, Any]] = []
+    last_i = len(beats) - 1
+    for i, beat in enumerate(beats):
+        item = dict(beat)
+        spoken = _normalize_pause_marks(str(item.get("spoken") or ""))
+        if i in {1, 3} or i == last_i:
+            if spoken and not spoken.lower().startswith("[pause"):
+                spoken = f"[pause] {spoken}"
+        item["spoken"] = spoken
+        stamped.append(item)
+    return stamped
+
 _RECAP_PAT = re.compile(
     r"simple version|whole story|to recap|in short|that is the whole|"
     r"here is the simple|said already|same thing|once more|again[,:]|"
@@ -152,14 +274,25 @@ _RECAP_PAT = re.compile(
 )
 
 
+def _truth_only(fact: dict[str, Any]) -> str:
+    """Science the model must keep — not sentences it is allowed to copy."""
+    lines = [f"Title: {fact.get('title')}", f"Category: {fact.get('category')}"]
+    for i, beat in enumerate(fact.get("beats") or [], 1):
+        spoken = _strip_pause_marks(str(beat.get("spoken") or ""))
+        if spoken:
+            lines.append(f"{i}. {spoken}")
+    return "\n".join(lines)
+
+
 def _word_count(beats: list[dict[str, Any]]) -> int:
-    return len(re.findall(r"[A-Za-z0-9']+", " ".join(str(b.get("spoken") or "") for b in beats)))
+    blob = _strip_pause_marks(" ".join(str(b.get("spoken") or "") for b in beats))
+    return len(re.findall(r"[A-Za-z0-9']+", blob))
 
 
 def _is_recap_spoken(spoken: str, earlier: list[str]) -> bool:
     if _RECAP_PAT.search(spoken):
         return True
-    words = set(re.findall(r"[a-z0-9']+", spoken.lower()))
+    words = set(re.findall(r"[a-z0-9']+", _strip_pause_marks(spoken).lower()))
     stop = {
         "a", "an", "the", "and", "or", "to", "of", "in", "on", "it", "is", "are",
         "that", "this", "you", "do", "know", "they", "for", "with",
@@ -167,7 +300,7 @@ def _is_recap_spoken(spoken: str, earlier: list[str]) -> bool:
     words -= stop
     if len(words) < 5:
         return False
-    prior = set(re.findall(r"[a-z0-9']+", " ".join(earlier).lower())) - stop
+    prior = set(re.findall(r"[a-z0-9']+", _strip_pause_marks(" ".join(earlier)).lower())) - stop
     overlap = len(words & prior) / max(len(words), 1)
     return overlap >= 0.55
 
@@ -194,8 +327,10 @@ def _normalize_beats(raw: list[Any], fallback: list[dict[str, Any]]) -> list[dic
         prompt = str(item.get("image_prompt") or "").strip()
         if not spoken:
             continue
+        spoken = _normalize_pause_marks(_unschool_opener(spoken))
+        caption = _strip_pause_marks(caption)
         if not caption:
-            caption = " ".join(spoken.split()[:5])
+            caption = " ".join(_strip_pause_marks(spoken).split()[:5])
         if not prompt and i < len(fallback):
             prompt = str(fallback[i].get("image_prompt") or "")
         beats.append({"spoken": spoken, "caption": caption, "image_prompt": prompt})
@@ -219,7 +354,10 @@ def _script_from_beats(
     hashtags: list[str] | None = None,
 ) -> ReelScript:
     beats = _drop_recap_beats(beats)
-    voiceover = re.sub(r"\s+", " ", " ".join(b["spoken"] for b in beats)).strip()
+    beats = _ensure_acting_pauses(beats)
+    voiceover = re.sub(
+        r"\s+", " ", " ".join(_normalize_pause_marks(b["spoken"]) for b in beats)
+    ).strip()
     tags = [str(h).lstrip("#") for h in (hashtags or [])][:12] or _default_hashtags(
         str(fact.get("category") or "")
     )
@@ -250,8 +388,25 @@ def _script_from_beats(
     )
 
 
+def _humanize_plaque(spoken: str) -> str:
+    """Keep fallback templates from reading like a museum guide."""
+    spoken = _normalize_pause_marks(_unschool_opener(spoken))
+    if not spoken or _PAUSE_MARK_RE.search(spoken):
+        return spoken
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", spoken) if p.strip()]
+    if len(parts) >= 2:
+        return f"{parts[0]} [pause] {' '.join(parts[1:])}"
+    spoken = re.sub(r"^That is why\b", "That's why", spoken)
+    spoken = re.sub(r"^It is\b", "It's", spoken)
+    return spoken
+
+
 def _fact_script(fact: dict) -> ReelScript:
-    beats = [dict(b) for b in fact.get("beats") or []]
+    beats = []
+    for b in fact.get("beats") or []:
+        item = dict(b)
+        item["spoken"] = _humanize_plaque(str(item.get("spoken") or ""))
+        beats.append(item)
     return _script_from_beats(fact, beats)
 
 
@@ -270,7 +425,7 @@ def _gemini_json(prompt: str) -> tuple[dict[str, Any] | None, str, str]:
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
                         "generationConfig": {
-                            "temperature": 0.9,
+                            "temperature": 1.05,
                             "responseMimeType": "application/json",
                         },
                     },
@@ -291,9 +446,7 @@ def _gemini_json(prompt: str) -> tuple[dict[str, Any] | None, str, str]:
 def _prepare_fact_beats(fact: dict, raw_beats: list[Any]) -> list[dict[str, Any]]:
     beats = _normalize_beats(raw_beats, fact.get("beats") or [])
     beats = _drop_recap_beats(beats)
-    if beats and not beats[0]["spoken"].lower().startswith("do you know"):
-        beats[0]["spoken"] = "Do you know this? " + beats[0]["spoken"]
-    return beats
+    return _ensure_acting_pauses(beats)
 
 
 def _expand_fact_beats(fact: dict, beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -303,18 +456,23 @@ def _expand_fact_beats(fact: dict, beats: list[dict[str, Any]]) -> list[dict[str
         return beats
     prompt = f"""
 The spoken Instagram fact reel is only {n} words. Rewrite it to about {_TARGET_VOICEOVER_WORDS} words
-({_MIN_VOICEOVER_WORDS}-{_MAX_VOICEOVER_WORDS}) so it lasts about 30 seconds. Topic: {fact['title']}
-Seed truth (do not contradict): {json.dumps(fact.get('beats') or [], ensure_ascii=True)}
-Current beats: {json.dumps(beats, ensure_ascii=True)}
+({_MIN_VOICEOVER_WORDS}-{_MAX_VOICEOVER_WORDS}) so it lasts about 30 seconds.
+
+Truth only (do not copy this wording):
+{_truth_only(fact)}
+
+Current beats (rewrite the voice, keep the science): {json.dumps(beats, ensure_ascii=True)}
+
+{_NIB_VOICE}
+{_FACT_VOICE}
 
 Rules:
 - 6 beats. Each beat MUST add a NEW true detail the previous beats did not already say.
 - Do NOT recap, summarize, or rephrase earlier lines. Forbidden phrases: "simple version",
   "whole story", "in other words", "to recap", "that is the whole".
-- MUST start beat 1 with exactly "Do you know"
 - Last beat is a unique punchline, not a summary of the fact.
 - Keep science accurate. No medical advice.
-- Each beat: spoken, caption (2-6 words), image_prompt (one object, white background, no text, no mascot)
+- Each beat: spoken (with [pause] marks), caption (2-6 words, no pause marks), image_prompt (one scroll-stopping object, white background, no text, no mascot)
 
 Return ONLY JSON: beats (array of spoken, caption, image_prompt)
 """
@@ -334,32 +492,30 @@ def _gemini_fact_script(fact: dict) -> ReelScript | None:
         print("   Gemini: no GEMINI_API_KEY — using template script")
         return None
 
-    beat_preview = json.dumps(fact.get("beats") or [], ensure_ascii=True)
     prompt = f"""
-Write a spoken Instagram Reel as Nib, a male cartoon mascot who tells curious facts.
+Write a spoken Instagram fact Reel as Nib. This must GRAB ATTENTION in the first second.
+
 Topic: {fact['title']}
 Category: {fact.get('category')}
-Seed beats (keep the science true; keep the voice calm): {beat_preview}
 
-Voice:
-- He gets attention by stating the surprising fact itself, then explaining it.
-- Dry, curious, confident. Like a smart friend pointing at something interesting.
-- Do NOT sound attention-seeking: no "wait for it", "you won't believe", "hold onto this",
-  "save this", "follow me", "the takeaway", "drop this fact", or begging the viewer.
-- No hype, no lecture, no medical or legal advice.
+Truth only — rewrite every sentence. Do not quote or lightly edit these:
+{_truth_only(fact)}
+
+{_NIB_VOICE}
+{_FACT_VOICE}
 
 Rules:
-- MUST start the first spoken line with exactly "Do you know"
 - {_MIN_VOICEOVER_WORDS} to {_MAX_VOICEOVER_WORDS} words total so a slightly fast voice lasts about 30 seconds
-- Exactly 6 beats that MOVE THE STORY FORWARD
-- Each beat introduces a NEW concrete detail. Never repeat or rephrase an earlier beat.
-- No recap, no "simple version", no "that is the whole story", no closing summary of the same facts.
-- The last beat is a new punchy closer, not a restatement.
+- Exactly 6 beats
+- Beat 1 = scroll-stop. A dare, a smirk, a visual punch. Then the fact. Not a definition.
+- Beats 2–5 = new true details, still spoken like gossip you are proud of
+- Beat 6 = a closer with teeth, not a recap
+- Never repeat or rephrase an earlier beat
 - Each beat has:
-  spoken: two short sentences that explain ONE new idea
-  caption: 2 to 6 words for huge on-screen text (lowercase ok)
-  image_prompt: ONE isolated real-world object or animal, large and centered, white background, no frame, no text, no mascot
-- Keep facts accurate to the seed. Do not invent wild false claims.
+  spoken: PERFORMED, with [pause] marks
+  caption: 2 to 6 words, huge on-screen text, no pause marks
+  image_prompt: ONE isolated object or animal, large, centered, white background, no frame, no text, no mascot. Beat 1's image should be the most striking.
+- Keep facts accurate. Do not invent wild false claims.
 
 Return ONLY JSON with keys:
 title, hashtags (8 tags without #), beats (array of spoken, caption, image_prompt)
@@ -382,21 +538,13 @@ title, hashtags (8 tags without #), beats (array of spoken, caption, image_promp
 
 
 def _story_script(story: dict) -> ReelScript:
-    hook = story["hook"]
-    if not hook.lower().startswith("do you know"):
-        hook = f"Do you know this? {hook}"
-
-    voiceover = " ".join(
-        [
-            hook,
-            story["discover"],
-            story["react"],
-            story["benefit"],
-            story.get("extra", ""),
-            story["payoff"],
-        ]
-    ).strip()
-    voiceover = re.sub(r"\s+", " ", voiceover)
+    hook = _normalize_pause_marks(_unschool_opener(story["hook"]))
+    discover = _normalize_pause_marks(story["discover"])
+    react = _normalize_pause_marks(story["react"])
+    benefit = _normalize_pause_marks(story["benefit"])
+    extra = _normalize_pause_marks(story.get("extra", ""))
+    payoff = _normalize_pause_marks(story["payoff"])
+    voiceover = _join_spoken([hook, discover, react, benefit, extra, payoff])
 
     return ReelScript(
         topic_id=story["id"],
@@ -404,9 +552,9 @@ def _story_script(story: dict) -> ReelScript:
         item=story["item"],
         item_emoji=story["item_emoji"],
         hook=hook,
-        line_1=story["discover"],
-        line_2=story["react"],
-        tip=story["benefit"],
+        line_1=discover,
+        line_2=react,
+        tip=benefit,
         caption=format_nutrition_caption(story),
         hashtags=[
             "nutrition",
@@ -419,28 +567,28 @@ def _story_script(story: dict) -> ReelScript:
             "reels",
         ],
         voiceover=voiceover,
-        discover=story["discover"],
-        react=story["react"],
-        benefit=story["benefit"],
-        extra=story.get("extra", ""),
-        payoff=story["payoff"],
+        discover=discover,
+        react=react,
+        benefit=benefit,
+        extra=extra,
+        payoff=payoff,
         reel_type="fridge",
     )
 
 
 def _meal_script(meal: dict) -> ReelScript:
-    hook = meal["hook"]
-    ingredients_line = meal["ingredients_line"]
-    spices_line = meal.get("spices_line") or (
-        "Don't forget the spices listed in the caption — that is the flavor."
+    hook = _normalize_pause_marks(_unschool_opener(meal["hook"]))
+    ingredients_line = _normalize_pause_marks(meal["ingredients_line"])
+    spices_line = _normalize_pause_marks(
+        meal.get("spices_line")
+        or "Don't forget the spices listed in the caption — that is the flavor."
     )
-    cook_line = meal["cook_line"]
-    benefit = meal["benefit"]
-    payoff = meal["payoff"]
-    voiceover = " ".join(
+    cook_line = _normalize_pause_marks(meal["cook_line"])
+    benefit = _normalize_pause_marks(meal["benefit"])
+    payoff = _normalize_pause_marks(meal["payoff"])
+    voiceover = _join_spoken(
         [hook, ingredients_line, spices_line, cook_line, benefit, payoff]
-    ).strip()
-    voiceover = re.sub(r"\s+", " ", voiceover)
+    )
 
     return ReelScript(
         topic_id=meal["id"],
@@ -483,17 +631,16 @@ def _gemini_script(story: dict) -> ReelScript | None:
         return None
 
     prompt = f"""
-Write a spoken Instagram Reel as Nib the Fridge Goblin.
-MUST start the voiceover with exactly "Do you know" to build curiosity.
-Setting: standing in front of an open home fridge, holding/showing: {story['item']}.
-Core benefit: {story['benefit']}
+Write a spoken Instagram Reel as Nib, standing in front of an open home fridge, holding/showing: {story['item']}.
+Core benefit (keep true): {story['benefit']}
+
+{_NIB_VOICE}
 
 Rules:
-- First person, curious then helpful, playful fridge-goblin energy
-- 45 to 60 words total voiceover (snappy Reel pace — no lingering)
-- Mini story beats: curiosity hook -> find item -> react -> benefit -> extra tip -> payoff
-- Short punchy sentences. No medical advice. No lecture tone.
-- Make the audience lean in during the hook before revealing the item.
+- 45 to 70 words total in voiceover (snappy Reel — pauses count as acting, not extra lecture)
+- Mini story beats: hook (stop the scroll, delay the item a half-second) -> discover the item -> react -> benefit -> extra tip -> payoff
+- Put [pause] marks in the spoken fields. Also put them in voiceover in the same places.
+- No medical advice. No kid-quiz voice. No "Do you know".
 - Do not repeat the same claim in the last beats. Each beat adds something new.
 
 Return ONLY JSON with keys:
@@ -505,19 +652,25 @@ Do NOT invent a caption — nutrition caption is added separately.
         print(f"   Gemini: fridge script failed ({last_err}) — using template script")
         return None
 
-    voiceover = str(parsed.get("voiceover") or "").strip()
-    if not voiceover.lower().startswith("do you know"):
-        voiceover = "Do you know this? " + voiceover
+    hook = _normalize_pause_marks(_unschool_opener(str(parsed["hook"])))
+    discover = _normalize_pause_marks(str(parsed["discover"]))
+    react = _normalize_pause_marks(str(parsed["react"]))
+    benefit = _normalize_pause_marks(str(parsed["benefit"]))
+    extra = _normalize_pause_marks(str(parsed.get("extra", "")))
+    payoff = _normalize_pause_marks(str(parsed["payoff"]))
+    voiceover = _normalize_pause_marks(_unschool_opener(str(parsed.get("voiceover") or "")))
+    if _count_pauses(voiceover) < 3:
+        voiceover = _join_spoken([hook, discover, react, benefit, extra, payoff])
     print(f"   Gemini: fridge script via {model}")
     return ReelScript(
         topic_id=story["id"],
         topic=story["item"],
         item=story["item"],
         item_emoji=story["item_emoji"],
-        hook=str(parsed["hook"]).strip(),
-        line_1=str(parsed["discover"]).strip(),
-        line_2=str(parsed["react"]).strip(),
-        tip=str(parsed["benefit"]).strip(),
+        hook=hook,
+        line_1=discover,
+        line_2=react,
+        tip=benefit,
         caption=format_nutrition_caption(story),
         hashtags=[str(h).lstrip("#") for h in parsed.get("hashtags", [])][:10]
         or [
@@ -531,11 +684,11 @@ Do NOT invent a caption — nutrition caption is added separately.
             "reels",
         ],
         voiceover=voiceover,
-        discover=str(parsed["discover"]).strip(),
-        react=str(parsed["react"]).strip(),
-        benefit=str(parsed["benefit"]).strip(),
-        extra=str(parsed.get("extra", "")).strip(),
-        payoff=str(parsed["payoff"]).strip(),
+        discover=discover,
+        react=react,
+        benefit=benefit,
+        extra=extra,
+        payoff=payoff,
         reel_type="fridge",
     )
 
@@ -553,25 +706,27 @@ def _gemini_meal_script(meal: dict) -> ReelScript | None:
     ) or "salt, black pepper"
     step_summary = " | ".join((meal.get("steps") or [])[:4])
     prompt = f"""
-Write a spoken Instagram Reel as Nib the Fridge Goblin cooking in a home kitchen.
+Write a spoken Instagram Reel as Nib cooking in a home kitchen.
 Meal: {meal['name']} (~{meal.get('time_mins', 15)} minutes).
 Ingredients: {ingredient_names}.
 Spices (MUST mention these by name in spices_line): {spice_names}.
 Cooking outline: {step_summary}.
-Core vibe: quick, easy, delicious, helpful teacher energy — playful fridge-goblin.
+
+{_NIB_VOICE}
+
+You are a goblin chef who makes people hungry AND stay to cook — not a recipe-card robot.
 
 Rules:
 - First person, kitchen setting (NOT standing at the fridge)
-- 90 to 130 words total voiceover (longer, clearer recipe reel — not a rushed tip)
-- Beats in order:
-  1) hook — grab attention + name the meal
+- 90 to 130 words total voiceover
+- Beats in order, each with [pause] marks where you'd actually breathe:
+  1) hook — stop the scroll, name the meal like it's a heist
   2) ingredients_line — list the main ingredients clearly
   3) spices_line — name the spices and say they are listed in the caption
-  4) cook_line — walk through the cooking process in clear order (2–4 short sentences)
-  5) benefit — why it is worth making
+  4) cook_line — walk through cooking in order (still charismatic, still clear)
+  5) benefit — why it's worth making
   6) payoff — save/follow CTA, remind caption has full recipe
-- Clear and easy to follow. No medical advice.
-- Do NOT start with "Do you know" — this is a meal reel, not a fridge find.
+- No medical advice. No "Do you know". No kid-show host.
 - Do NOT invent ingredients, spices, or macros not listed above.
 
 Return ONLY JSON with keys:
@@ -583,20 +738,21 @@ Do NOT invent a caption — detailed recipe caption is added separately.
         print(f"   Gemini: meal script failed ({last_err}) — using template")
         return None
 
-    hook = str(parsed["hook"]).strip()
-    ingredients_line = str(parsed["ingredients_line"]).strip()
-    spices_line = str(parsed.get("spices_line") or meal.get("spices_line") or "").strip()
+    hook = _normalize_pause_marks(_unschool_opener(str(parsed["hook"])))
+    ingredients_line = _normalize_pause_marks(str(parsed["ingredients_line"]))
+    spices_line = _normalize_pause_marks(
+        str(parsed.get("spices_line") or meal.get("spices_line") or "")
+    )
     if not spices_line:
         spices_line = f"Add your spices — {spice_names}. Full amounts are in the caption."
-    cook_line = str(parsed["cook_line"]).strip()
-    benefit = str(parsed["benefit"]).strip()
-    payoff = str(parsed["payoff"]).strip()
-    voiceover = str(parsed.get("voiceover") or "").strip()
-    if not voiceover:
-        voiceover = " ".join(
+    cook_line = _normalize_pause_marks(str(parsed["cook_line"]))
+    benefit = _normalize_pause_marks(str(parsed["benefit"]))
+    payoff = _normalize_pause_marks(str(parsed["payoff"]))
+    voiceover = _normalize_pause_marks(_unschool_opener(str(parsed.get("voiceover") or "")))
+    if _count_pauses(voiceover) < 3:
+        voiceover = _join_spoken(
             [hook, ingredients_line, spices_line, cook_line, benefit, payoff]
         )
-    voiceover = re.sub(r"\s+", " ", voiceover).strip()
     print(f"   Gemini: meal script via {model}")
     return ReelScript(
         topic_id=meal["id"],

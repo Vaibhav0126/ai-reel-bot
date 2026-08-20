@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 from .config import AUTO_POST, OUTPUT_DIR
-from .fact_image import generate_fact_images
+from .fact_image import generate_fact_images, generate_fridge_item_image
 from .fridge_video import render_fridge_reel
 from .instagram import can_post, post_reel
 from .meal_image import generate_meal_image
@@ -62,6 +62,9 @@ def run_daily(post: bool | None = None, reel_type: ReelType = "fact") -> dict:
     if reel_type == "fact":
         print("   Generating cartoon beat images…")
         generate_fact_images(script, out_dir)
+    elif reel_type == "fridge":
+        print("   Generating fridge item image (Cloudflare)…")
+        generate_fridge_item_image(script, out_dir)
     elif reel_type == "meal":
         print("   Generating plated meal image…")
         plate = generate_meal_image(script, out_dir)

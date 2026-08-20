@@ -45,7 +45,8 @@ def _extract_image_bytes(data: dict) -> bytes | None:
 def _enrich_prompt(prompt: str, caption: str, spoken: str) -> str:
     subject = (prompt or "").strip().rstrip(".")
     caption = (caption or "").strip()
-    spoken = re.sub(r"\s+", " ", (spoken or "").strip())
+    spoken = re.sub(r"\[pause(?::\w+)?\]", " ", spoken or "")
+    spoken = re.sub(r"\s+", " ", spoken).strip()
     gist = spoken[:120]
     bits = [p for p in (subject, caption, gist) if p]
     unique: list[str] = []
@@ -126,7 +127,7 @@ def _cloudflare_cartoon(prompt: str, out_path: Path) -> Path | None:
         raw = base64.b64decode(b64)
         img = Image.open(io.BytesIO(raw))
         _to_object_png(img, out_path)
-        print(f"   Fact art: Cloudflare Flux → {out_path.name}")
+        print(f"   Image: Cloudflare Flux → {out_path.name}")
         return out_path
     except Exception as exc:
         print(f"   Cloudflare: failed ({type(exc).__name__})")
@@ -242,6 +243,37 @@ def generate_one_beat_image(
     if result is not None:
         return result
     return cartoon_shape_fallback(prompt, out_path, index, caption)
+
+
+def generate_fridge_item_image(script: ReelScript, out_dir: Path) -> Path | None:
+    """Cloudflare (then fallbacks) cartoon of the food Nib pulls from the fridge."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "fridge_item.png"
+    item = (script.item or script.topic or "fridge snack").strip()
+    if item.lower() in {"nothing", "sleep"}:
+        prompt = (
+            "isolated sticker of a glowing crescent moon above a quiet closed fridge, "
+            "large and centered, children's book illustration, bold saturated colors, "
+            "thick clean outlines, plain solid white background, no text, no mascot, no people"
+        )
+    else:
+        prompt = (
+            f"isolated sticker of {item} as it looks in a home refrigerator, "
+            "appetizing, large and centered, children's book illustration, "
+            "bold saturated colors, thick clean outlines, sharp focus, "
+            "plain solid white background, no frame, no text, no mascot, no people"
+        )
+    full = _enrich_prompt(prompt, item, script.discover or script.hook)
+    result = _cloudflare_cartoon(full, out_path)
+    if result is None:
+        result = _pollinations_cartoon(full, out_path)
+    if result is None:
+        result = _gemini_cartoon(full, out_path)
+    if result is None:
+        print("   Fridge item: no generated image — using cartoon prop")
+        return None
+    script.beat_image_paths = [str(result)]
+    return result
 
 
 def generate_fact_images(script: ReelScript, out_dir: Path) -> list[Path]:
