@@ -1,10 +1,47 @@
 [
-  "banana_berry",
-  "quantum_empty",
-  "northern_lights",
-  "machiavelli_chess",
-  "sharks_older_than_trees",
-  "volcano_lightning",
-  "wombat_cubes",
-  "narcissism_mirror"
+  {
+    "id": "banana_berry",
+    "title": "bananas are berries",
+    "category": "food"
+  },
+  {
+    "id": "quantum_empty",
+    "title": "empty space is not empty",
+    "category": "weird_science"
+  },
+  {
+    "id": "northern_lights",
+    "title": "auroras are solar leftovers",
+    "category": "nature"
+  },
+  {
+    "id": "machiavelli_chess",
+    "title": "Machiavellianism is strategy",
+    "category": "psychology"
+  },
+  {
+    "id": "sharks_older_than_trees",
+    "title": "sharks are older than trees",
+    "category": "animals"
+  },
+  {
+    "id": "volcano_lightning",
+    "title": "volcanoes can make lightning",
+    "category": "nature"
+  },
+  {
+    "id": "wombat_cubes",
+    "title": "wombats poop cubes",
+    "category": "animals"
+  },
+  {
+    "id": "narcissism_mirror",
+    "title": "narcissism needs supply",
+    "category": "psychology"
+  },
+  {
+    "id": "bones_rebuild",
+    "title": "your skeleton rebuilds",
+    "category": "body"
+  }
 ]
