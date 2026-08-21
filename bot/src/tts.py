@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,30 +15,42 @@ import imageio_ffmpeg
 from .config import EDGE_TTS_PITCH, EDGE_TTS_RATE, EDGE_TTS_VOICE
 
 _PAUSE_MARK_RE = re.compile(r"\[pause(?::(short|long|beat))?\]", re.I)
-_PAUSE_MS = {"short": 200, "beat": 280, "long": 650}
-_PAUSE_PLACEHOLDER_RE = re.compile(r"@@PAUSE(\d+)@@")
+# Breaths between thoughts — long enough to read as human, short enough for Reels.
+_PAUSE_MS = {"short": 280, "beat": 360, "long": 780}
+_DEFAULT_PAUSE_MS = 520
+_TICKS_PER_SECOND = 10_000_000
 
 
 def strip_pause_marks(text: str) -> str:
     return re.sub(r"\s+", " ", _PAUSE_MARK_RE.sub(" ", text or "")).strip()
 
 
-def _tts_text_with_placeholders(text: str) -> str:
-    def repl(match: re.Match[str]) -> str:
+def _pause_segments(text: str) -> tuple[int, list[tuple[str, int]]]:
+    """Split performed script into (spoken, pause_after_ms) plus a leading silence."""
+    raw = text or ""
+    leading_ms = 0
+    parts: list[tuple[str, int]] = []
+    last = 0
+    for match in _PAUSE_MARK_RE.finditer(raw):
+        spoken = re.sub(r"\s+", " ", raw[last : match.start()]).strip()
         kind = (match.group(1) or "").lower()
-        ms = _PAUSE_MS.get(kind, 400)
-        return f" @@PAUSE{ms}@@ "
-
-    return re.sub(r"\s+", " ", _PAUSE_MARK_RE.sub(repl, text or "")).strip()
-
-
-def _inject_ssml_breaks(chunks: list[bytes | str]) -> list[bytes]:
-    out: list[bytes] = []
-    for chunk in chunks:
-        text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
-        text = _PAUSE_PLACEHOLDER_RE.sub(r"<break time='\1ms'/>", text)
-        out.append(text.encode("utf-8"))
-    return out
+        ms = _PAUSE_MS.get(kind, _DEFAULT_PAUSE_MS)
+        if spoken:
+            parts.append((spoken, ms))
+        elif parts:
+            prev_text, prev_ms = parts[-1]
+            parts[-1] = (prev_text, prev_ms + ms)
+        else:
+            leading_ms += ms
+        last = match.end()
+    tail = re.sub(r"\s+", " ", raw[last:]).strip()
+    if tail:
+        parts.append((tail, 0))
+    if not parts:
+        stripped = strip_pause_marks(raw)
+        if stripped:
+            parts.append((stripped, 0))
+    return leading_ms, parts
 
 
 @dataclass
@@ -85,34 +99,145 @@ def _normalize_token(text: str) -> str:
     return re.sub(r"[^a-z0-9']+", "", text.lower())
 
 
-async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> VoiceResult:
+async def _stream_plain(
+    text: str, voice: str
+) -> tuple[bytes, list[WordTiming], list[SentenceTiming]]:
     communicate = edge_tts.Communicate(
-        _tts_text_with_placeholders(text),
+        text,
         voice=voice,
         rate=EDGE_TTS_RATE,
         pitch=EDGE_TTS_PITCH,
         boundary="WordBoundary",
     )
-    communicate.texts = _inject_ssml_breaks(list(communicate.texts))
     words: list[WordTiming] = []
-    audio_chunks: list[bytes] = []
     sentences: list[SentenceTiming] = []
-
+    audio_chunks: list[bytes] = []
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
             audio_chunks.append(chunk["data"])
         elif chunk["type"] == "WordBoundary":
-            start = chunk["offset"] / 10_000_000
-            end = (chunk["offset"] + chunk["duration"]) / 10_000_000
+            start = chunk["offset"] / _TICKS_PER_SECOND
+            end = (chunk["offset"] + chunk["duration"]) / _TICKS_PER_SECOND
             words.append(WordTiming(text=chunk["text"], start=start, end=end))
         elif chunk["type"] == "SentenceBoundary":
-            start = chunk["offset"] / 10_000_000
-            end = (chunk["offset"] + chunk["duration"]) / 10_000_000
+            start = chunk["offset"] / _TICKS_PER_SECOND
+            end = (chunk["offset"] + chunk["duration"]) / _TICKS_PER_SECOND
             sentences.append(SentenceTiming(text=chunk["text"], start=start, end=end))
+    audio = b"".join(audio_chunks)
+    if not audio:
+        raise RuntimeError("edge-tts returned no audio")
+    return audio, words, sentences
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(b"".join(audio_chunks))
 
+def _run_ffmpeg(args: list[str]) -> subprocess.CompletedProcess[str]:
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    proc = subprocess.run(
+        [ffmpeg, *args],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "ffmpeg failed")[-1500:]
+        raise RuntimeError(err)
+    return proc
+
+
+def _ffmpeg_info(path: Path) -> str:
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    proc = subprocess.run(
+        [ffmpeg, "-i", str(path)],
+        capture_output=True,
+        text=True,
+    )
+    return proc.stderr or ""
+
+
+def _audio_file_duration(path: Path) -> float:
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", _ffmpeg_info(path))
+    if not m:
+        return 0.0
+    h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
+    return h * 3600 + mi * 60 + s
+
+
+def _to_wav(src: Path, dest: Path, sample_rate: int) -> None:
+    _run_ffmpeg(
+        [
+            "-y",
+            "-i",
+            str(src),
+            "-ac",
+            "1",
+            "-ar",
+            str(sample_rate),
+            str(dest),
+        ]
+    )
+
+
+def _silence_wav(dest: Path, seconds: float, sample_rate: int) -> None:
+    _run_ffmpeg(
+        [
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anullsrc=r={sample_rate}:cl=mono",
+            "-t",
+            f"{max(seconds, 0.05):.3f}",
+            str(dest),
+        ]
+    )
+
+
+def _concat_wavs(paths: list[Path], dest: Path) -> None:
+    if len(paths) == 1:
+        shutil.copyfile(paths[0], dest)
+        return
+    list_path = dest.with_suffix(".concat.txt")
+    list_path.write_text(
+        "".join(f"file '{p.resolve()}'\n" for p in paths),
+        encoding="utf-8",
+    )
+    try:
+        _run_ffmpeg(
+            [
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(list_path),
+                "-c",
+                "copy",
+                str(dest),
+            ]
+        )
+    finally:
+        list_path.unlink(missing_ok=True)
+
+
+def _wav_to_mp3(src: Path, dest: Path) -> None:
+    try:
+        _run_ffmpeg(
+            ["-y", "-i", str(src), "-c:a", "libmp3lame", "-q:a", "4", str(dest)]
+        )
+    except RuntimeError:
+        _run_ffmpeg(["-y", "-i", str(src), str(dest)])
+
+
+def _shift(items: list, offset: float):
+    for item in items:
+        item.start += offset
+        item.end += offset
+
+
+def _fill_missing_timings(
+    text: str,
+    words: list[WordTiming],
+    sentences: list[SentenceTiming],
+) -> tuple[list[WordTiming], list[SentenceTiming]]:
     if not words and sentences:
         for sent in sentences:
             words.extend(_words_from_sentence(sent.text, sent.start, sent.end))
@@ -123,8 +248,11 @@ async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> Voi
         words = _words_from_sentence(" ".join(fallback) or text, 0.0, dur)
 
     if not sentences and words:
-        # Rebuild rough sentence spans from punctuation in original text
-        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", strip_pause_marks(text)) if p.strip()]
+        parts = [
+            p.strip()
+            for p in re.split(r"(?<=[.!?])\s+", strip_pause_marks(text))
+            if p.strip()
+        ]
         if parts:
             total_chars = sum(max(len(p), 1) for p in parts) or 1
             cursor = words[0].start
@@ -135,35 +263,73 @@ async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> Voi
                 sentences.append(SentenceTiming(text=p, start=cursor, end=cursor + dur))
                 cursor += dur
             sentences[-1].end = end_all
+    return words, sentences
 
-    # Prefer real file length — word boundaries often end before the last phoneme
+
+async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> VoiceResult:
+    # Plain-text Edge calls (same as the working other repo), with real silence
+    # stitched in for [pause] marks. Do not inject SSML into communicate.texts.
+    leading_ms, segments = _pause_segments(text)
+    if not segments:
+        raise RuntimeError("voiceover text was empty after stripping pause marks")
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    words: list[WordTiming] = []
+    sentences: list[SentenceTiming] = []
+    wav_parts: list[Path] = []
+    cursor = 0.0
+    sample_rate = 24000
+
+    with tempfile.TemporaryDirectory(prefix="nib-tts-") as tmp:
+        tmp_dir = Path(tmp)
+        n = 0
+
+        def add_silence(ms: int) -> None:
+            nonlocal cursor, n
+            if ms <= 0:
+                return
+            sil = tmp_dir / f"sil_{n:02d}.wav"
+            _silence_wav(sil, ms / 1000.0, sample_rate)
+            wav_parts.append(sil)
+            cursor += ms / 1000.0
+            n += 1
+
+        add_silence(leading_ms)
+
+        for spoken, pause_after_ms in segments:
+            mp3_part = tmp_dir / f"part_{n:02d}.mp3"
+            audio, part_words, part_sentences = await _stream_plain(spoken, voice)
+            mp3_part.write_bytes(audio)
+            wav_part = tmp_dir / f"part_{n:02d}.wav"
+            _to_wav(mp3_part, wav_part, sample_rate)
+            wav_parts.append(wav_part)
+
+            _shift(part_words, cursor)
+            _shift(part_sentences, cursor)
+            words.extend(part_words)
+            sentences.extend(part_sentences)
+
+            spoken_dur = _audio_file_duration(wav_part)
+            if spoken_dur <= 0 and part_words:
+                spoken_dur = part_words[-1].end - cursor
+            cursor += spoken_dur
+            n += 1
+            add_silence(pause_after_ms)
+
+        merged = tmp_dir / "voice.wav"
+        _concat_wavs(wav_parts, merged)
+        _wav_to_mp3(merged, out_path)
+
+    words, sentences = _fill_missing_timings(text, words, sentences)
     file_dur = _audio_file_duration(out_path)
     word_end = words[-1].end if words else 0.0
-    duration = max(file_dur, word_end) + 0.25
+    duration = max(file_dur, word_end, cursor) + 0.25
     return VoiceResult(
         audio_path=out_path,
         words=words,
         duration=duration,
         sentences=sentences,
     )
-
-
-def _audio_file_duration(path: Path) -> float:
-    """Return mp3/audio duration in seconds via ffmpeg."""
-    try:
-        ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
-        proc = subprocess.run(
-            [ffmpeg, "-i", str(path)],
-            capture_output=True,
-            text=True,
-        )
-        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", proc.stderr or "")
-        if m:
-            h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
-            return h * 3600 + mi * 60 + s
-    except Exception:
-        pass
-    return 0.0
 
 
 _TTS_ATTEMPTS = 5
