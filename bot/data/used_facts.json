@@ -43,5 +43,10 @@
     "id": "bones_rebuild",
     "title": "your skeleton rebuilds",
     "category": "body"
+  },
+  {
+    "id": "negativity_bias",
+    "title": "brains love bad news",
+    "category": "psychology"
   }
 ]
