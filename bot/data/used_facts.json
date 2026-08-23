@@ -58,5 +58,10 @@
     "id": "light_year_distance",
     "title": "a light year is distance",
     "category": "weird_science"
+  },
+  {
+    "id": "default_mode_mind",
+    "title": "your mind wanders on purpose",
+    "category": "psychology"
   }
 ]
