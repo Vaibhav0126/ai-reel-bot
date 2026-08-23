@@ -63,5 +63,10 @@
     "id": "default_mode_mind",
     "title": "your mind wanders on purpose",
     "category": "psychology"
+  },
+  {
+    "id": "wasabi_not_wasabi",
+    "title": "most wasabi is not wasabi",
+    "category": "food"
   }
 ]
