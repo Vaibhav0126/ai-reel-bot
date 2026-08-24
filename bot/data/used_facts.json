@@ -68,5 +68,10 @@
     "id": "wasabi_not_wasabi",
     "title": "most wasabi is not wasabi",
     "category": "food"
+  },
+  {
+    "id": "axolotl_regrow",
+    "title": "axolotls can regenerate",
+    "category": "animals"
   }
 ]
