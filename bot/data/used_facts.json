@@ -73,5 +73,10 @@
     "id": "axolotl_regrow",
     "title": "axolotls can regenerate",
     "category": "animals"
+  },
+  {
+    "id": "fingerprints_unique",
+    "title": "fingerprints form in the womb",
+    "category": "body"
   }
 ]
