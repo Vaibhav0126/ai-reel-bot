@@ -83,5 +83,10 @@
     "id": "empty_atom",
     "title": "atoms are mostly empty",
     "category": "weird_science"
+  },
+  {
+    "id": "dark_triad",
+    "title": "the dark triad",
+    "category": "psychology"
   }
 ]
