@@ -108,5 +108,10 @@
     "id": "goat_pupils",
     "title": "goats have rectangle pupils",
     "category": "animals"
+  },
+  {
+    "id": "time_slower_speed",
+    "title": "fast clocks run slow",
+    "category": "weird_science"
   }
 ]
