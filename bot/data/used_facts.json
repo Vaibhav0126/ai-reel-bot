@@ -103,5 +103,10 @@
     "id": "yawning_contagious",
     "title": "yawns are contagious",
     "category": "body"
+  },
+  {
+    "id": "goat_pupils",
+    "title": "goats have rectangle pupils",
+    "category": "animals"
   }
 ]
