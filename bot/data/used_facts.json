@@ -98,5 +98,10 @@
     "id": "moon_earthquakes",
     "title": "the moon has moonquakes",
     "category": "nature"
+  },
+  {
+    "id": "yawning_contagious",
+    "title": "yawns are contagious",
+    "category": "body"
   }
 ]

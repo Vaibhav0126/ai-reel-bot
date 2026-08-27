@@ -243,10 +243,10 @@ def mark_meal_used(meal_id: str) -> None:
         _save_used(USED_MEALS_PATH, used)
 
 
-# ~84 words at EDGE_TTS_RATE=+12% is about 30 seconds. Do not pad with a recap.
-_TARGET_VOICEOVER_WORDS = 90
-_MIN_VOICEOVER_WORDS = 80
-_MAX_VOICEOVER_WORDS = 100
+# ~58 words at EDGE_TTS_RATE=+18% is about 18–22 seconds. Fast, not a lecture.
+_TARGET_VOICEOVER_WORDS = 58
+_MIN_VOICEOVER_WORDS = 42
+_MAX_VOICEOVER_WORDS = 70
 
 _PAUSE_MARK_RE = re.compile(r"\[pause(?::(short|long|beat))?\]", re.I)
 _KID_OPENER_RE = re.compile(
@@ -274,11 +274,13 @@ CADENCE (this is acting, not copywriting):
 - Fragments. Asides. Then land the science like you were saving it.
 - Uneven rhythm. Never six sentences the same length. Never "subject verb fact. subject verb fact."
 
-PAUSES (you decide the performance):
-- Insert [pause], [pause:short], or [pause:long] where a human would breathe, smirk, or let it land.
-- [pause:short] after a tease. [pause] after the hook or a reveal. [pause:long] before the twist or closer.
-- 3 to 6 pause marks per reel. BETWEEN thoughts, never mid-word, never in captions.
-- Do not stack three pauses. Do not pause after every sentence.
+PAUSES (you direct the performance — these become real silence in TTS):
+- Put [pause], [pause:short], or [pause:long] where a human would breathe, smirk, or let a line land.
+- [pause:short] after a tease. [pause] after the hook or a reveal. [pause:long] at most once, before the twist.
+- 2 to 4 marks total. BETWEEN thoughts, never mid-word, never in captions or titles.
+- Prefer [pause:short]. Do not pause after every sentence. Do not stack marks.
+- Never write the word "pause" as spoken dialogue. The tag is direction, not a line.
+- Keep the talk FAST. Pauses are tiny acting beats, not waiting around.
 
 TONE:
 - Charisma first, facts second — but the facts stay true.
@@ -329,22 +331,29 @@ def _normalize_pause_marks(text: str) -> str:
         return "[pause]"
 
     cleaned = _PAUSE_MARK_RE.sub(repl, text or "")
+    cleaned = re.sub(
+        r"(?:\[pause(?::(?:short|long|beat))?\]\s*){2,}",
+        lambda m: "[pause:long] " if "long" in m.group(0).lower() else "[pause] ",
+        cleaned,
+        flags=re.I,
+    )
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _join_spoken(parts: list[str]) -> str:
+    """Concatenate beats. Keep Gemini's pause marks; do not force a pause on every cut."""
     chunks = [_normalize_pause_marks(p) for p in parts if str(p or "").strip()]
     if not chunks:
         return ""
     blob = re.sub(r"\s+", " ", " ".join(chunks)).strip()
-    if _count_pauses(blob) >= 3:
+    if _count_pauses(blob):
         return blob
     out = [chunks[0]]
     for chunk in chunks[1:]:
         if chunk.lower().startswith("[pause"):
             out.append(chunk)
         else:
-            out.append(f"[pause] {chunk}")
+            out.append(f"[pause:short] {chunk}")
     return re.sub(r"\s+", " ", " ".join(out)).strip()
 
 
@@ -354,18 +363,16 @@ def _unschool_opener(spoken: str) -> str:
 
 
 def _ensure_acting_pauses(beats: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """If the writer skipped pause marks, add a few scene-change breaths."""
+    """If Gemini wrote no pause marks at all, add a couple of short scene breaths."""
     spoken_all = " ".join(str(b.get("spoken") or "") for b in beats)
-    if _count_pauses(spoken_all) >= 3:
+    if _count_pauses(spoken_all):
         return beats
     stamped: list[dict[str, Any]] = []
-    last_i = len(beats) - 1
     for i, beat in enumerate(beats):
         item = dict(beat)
         spoken = _normalize_pause_marks(str(item.get("spoken") or ""))
-        if i in {1, 3} or i == last_i:
-            if spoken and not spoken.lower().startswith("[pause"):
-                spoken = f"[pause] {spoken}"
+        if i in {1, 3} and spoken and not spoken.lower().startswith("[pause"):
+            spoken = f"[pause:short] {spoken}"
         item["spoken"] = spoken
         stamped.append(item)
     return stamped
@@ -502,7 +509,7 @@ def _humanize_plaque(spoken: str) -> str:
         return spoken
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", spoken) if p.strip()]
     if len(parts) >= 2:
-        return f"{parts[0]} [pause] {' '.join(parts[1:])}"
+        return f"{parts[0]} [pause:short] {' '.join(parts[1:])}"
     spoken = re.sub(r"^That is why\b", "That's why", spoken)
     spoken = re.sub(r"^It is\b", "It's", spoken)
     return spoken
@@ -563,7 +570,7 @@ def _expand_fact_beats(fact: dict, beats: list[dict[str, Any]]) -> list[dict[str
         return beats
     prompt = f"""
 The spoken Instagram fact reel is only {n} words. Rewrite it to about {_TARGET_VOICEOVER_WORDS} words
-({_MIN_VOICEOVER_WORDS}-{_MAX_VOICEOVER_WORDS}) so it lasts about 30 seconds.
+({_MIN_VOICEOVER_WORDS}-{_MAX_VOICEOVER_WORDS}) so it stays a fast 15–22 second Short.
 
 Truth only (do not copy this wording):
 {_truth_only(fact)}
@@ -676,7 +683,8 @@ Truth only — rewrite every sentence. Do not quote or lightly edit these:
 {_FACT_VOICE}
 
 Rules:
-- {_MIN_VOICEOVER_WORDS} to {_MAX_VOICEOVER_WORDS} words total so a slightly fast voice lasts about 30 seconds
+- {_MIN_VOICEOVER_WORDS} to {_MAX_VOICEOVER_WORDS} words total. Fast. Nobody should get bored.
+- YOU place 2–4 [pause]/[pause:short]/[pause:long] marks in spoken like a human performer. Not in captions.
 - Exactly 6 beats
 - Beat 1 = scroll-stop. A dare, a smirk, a visual punch. Then the fact. Not a definition.
 - Beats 2–5 = new true details, still spoken like gossip you are proud of
@@ -808,9 +816,9 @@ Core benefit (keep true): {story['benefit']}
 {_NIB_VOICE}
 
 Rules:
-- 45 to 70 words total in voiceover (snappy Reel — pauses count as acting, not extra lecture)
-- Mini story beats: hook (stop the scroll, delay the item a half-second) -> discover the item -> react -> benefit -> extra tip -> payoff
-- Put [pause] marks in the spoken fields. Also put them in voiceover in the same places.
+- 45 to 70 words total in voiceover (snappy Reel — pauses are tiny acting beats)
+- Mini story beats: hook (stop the scroll) -> discover the item -> react -> benefit -> extra tip -> payoff
+- YOU place 2–4 [pause] marks in spoken + voiceover like a human. Never in captions. Never say the word pause.
 - No medical advice. No kid-quiz voice. No "Do you know".
 - Do not repeat the same claim in the last beats. Each beat adds something new.
 
@@ -830,7 +838,7 @@ Do NOT invent a caption — nutrition caption is added separately.
     extra = _normalize_pause_marks(str(parsed.get("extra", "")))
     payoff = _normalize_pause_marks(str(parsed["payoff"]))
     voiceover = _normalize_pause_marks(_unschool_opener(str(parsed.get("voiceover") or "")))
-    if _count_pauses(voiceover) < 3:
+    if not _count_pauses(voiceover):
         voiceover = _join_spoken([hook, discover, react, benefit, extra, payoff])
     print(f"   Gemini: fridge script via {model}")
     return ReelScript(
@@ -889,8 +897,8 @@ You are a goblin chef who makes people hungry AND stay to cook — not a recipe-
 
 Rules:
 - First person, kitchen setting (NOT standing at the fridge)
-- 90 to 130 words total voiceover
-- Beats in order, each with [pause] marks where you'd actually breathe:
+- 70 to 95 words total voiceover. Keep it moving.
+- Beats in order. YOU place 2–4 [pause] marks where a cook would actually breathe — not after every sentence:
   1) hook — stop the scroll, name the meal like it's a heist
   2) ingredients_line — list the main ingredients clearly
   3) spices_line — name the spices and say they are listed in the caption
@@ -920,7 +928,7 @@ Do NOT invent a caption — detailed recipe caption is added separately.
     benefit = _normalize_pause_marks(str(parsed["benefit"]))
     payoff = _normalize_pause_marks(str(parsed["payoff"]))
     voiceover = _normalize_pause_marks(_unschool_opener(str(parsed.get("voiceover") or "")))
-    if _count_pauses(voiceover) < 3:
+    if not _count_pauses(voiceover):
         voiceover = _join_spoken(
             [hook, ingredients_line, spices_line, cook_line, benefit, payoff]
         )

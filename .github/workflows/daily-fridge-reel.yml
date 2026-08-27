@@ -39,8 +39,8 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          EDGE_TTS_VOICE: en-US-GuyNeural
-          EDGE_TTS_RATE: "+12%"
+          EDGE_TTS_VOICE: en-US-AndrewNeural
+          EDGE_TTS_RATE: "+18%"
           EDGE_TTS_PITCH: "+0Hz"
           AUTO_POST: "false"
         run: python bot/run_daily.py --type fridge --post

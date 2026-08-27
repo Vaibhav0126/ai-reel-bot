@@ -17,7 +17,7 @@ Each run:
 1. Picks an unused fact (no repeats until the list cycles)
 2. Writes a script in Nib’s voice (template mode free; Gemini optional)
 3. Generates cartoon images per beat via free Pollinations.ai (Gemini image optional; shape last resort)
-4. Generates voiceover with free Edge TTS
+4. Generates voiceover with Edge TTS (`en-US-AndrewNeural`)
 5. Builds a 9:16 reel: still color BG + centered Nib + beat art + huge top captions
 6. Optionally posts to Instagram (Graph API) **and** YouTube Shorts (Data API v3)
 

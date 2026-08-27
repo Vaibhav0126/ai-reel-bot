@@ -40,9 +40,10 @@ YOUTUBE_CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID", "").strip()
 YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "").strip()
 YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip()
 YOUTUBE_PRIVACY_STATUS = os.getenv("YOUTUBE_PRIVACY_STATUS", "public").strip()
-# Adult male neural voice. Scripts control charisma and pauses — not a kid narrator.
-EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-GuyNeural").strip()
-EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "-8%").strip()
+# Adult male neural voice (Andrew is warmer/more natural than Guy).
+# Slightly fast so Shorts stay punchy; Gemini [pause] marks add the breaths.
+EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-AndrewNeural").strip()
+EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+18%").strip()
 EDGE_TTS_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz").strip()
 AUTO_POST = os.getenv("AUTO_POST", "false").strip().lower() in {"1", "true", "yes"}
 # Video length follows the voiceover (plus a short tail). Do not pad to a

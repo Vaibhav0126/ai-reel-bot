@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 
 from .config import AUTO_POST, OUTPUT_DIR
@@ -18,6 +19,7 @@ from .script_gen import (
     mark_meal_used,
     mark_topic_used,
 )
+from .tts import strip_pause_marks
 from .video import render_reel
 from .youtube import can_post as can_post_youtube
 from .youtube import post_short
@@ -30,7 +32,9 @@ def _normalize_reel_type(reel_type: ReelType | str) -> ReelType:
 
 
 def _youtube_title(script: ReelScript) -> str:
-    hook = (script.hook or script.topic).strip()
+    hook = strip_pause_marks(script.hook or script.topic)
+    hook = re.sub(r"\bpause\b", " ", hook, flags=re.I)
+    hook = re.sub(r"\s+", " ", hook).strip(" .")
     title = hook if hook.endswith(("!", "?", ".")) else f"{hook}!"
     title = f"{title} #Shorts"
     return title[:100]

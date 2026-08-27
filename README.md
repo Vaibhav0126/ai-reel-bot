@@ -127,7 +127,7 @@ prompt — he is composited from pose sheets):
 
 ### 4. Voiceover synthesis (`tts.py`)
 - `edge-tts` streams the script text through a free Microsoft neural voice (default
-  `en-US-AnaNeural`, configurable rate/pitch) and captures **WordBoundary**/**SentenceBoundary**
+  `en-US-AndrewNeural`, `+18%` rate) and captures **WordBoundary**/**SentenceBoundary**
   events as it synthesizes — giving millisecond-accurate timestamps for every spoken word, not just
   an estimated guess.
 - `align_script_beats()` then maps each spoken beat onto the real timestamp where those words are
@@ -289,7 +289,7 @@ when keys are missing:
 | `INSTAGRAM_USER_ID` / `INSTAGRAM_ACCESS_TOKEN` | Auto-posting to Instagram | See [Publishing integrations](#publishing-integrations) |
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | Auto-posting to YouTube Shorts | Generated once via `bot/get_youtube_refresh_token.py` |
 | `YOUTUBE_PRIVACY_STATUS` | — | `public` / `unlisted` / `private` (default `public`) |
-| `EDGE_TTS_VOICE` / `EDGE_TTS_RATE` / `EDGE_TTS_PITCH` | — | Defaults to a cute/cartoon-sounding neural voice (`en-US-AnaNeural`, `+20%` rate) |
+| `EDGE_TTS_VOICE` / `EDGE_TTS_RATE` / `EDGE_TTS_PITCH` | — | Defaults to `en-US-AndrewNeural` at `+18%` rate (warm adult male; list voices with `edge-tts --list-voices`) |
 | `AUTO_POST` | — | `true`/`false` — whether `run_daily()` publishes by default without `--post` |
 
 ---

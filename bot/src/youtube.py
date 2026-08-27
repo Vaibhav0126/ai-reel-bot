@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -14,6 +15,7 @@ from .config import (
     YOUTUBE_PRIVACY_STATUS,
     YOUTUBE_REFRESH_TOKEN,
 )
+from .tts import strip_pause_marks
 
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
@@ -66,6 +68,10 @@ def post_short(
 
     if "#shorts" not in title.lower() and "#shorts" not in description.lower():
         description = f"{description}\n\n#Shorts".strip()
+
+    title = re.sub(r"\s+", " ", strip_pause_marks(title))
+    title = re.sub(r"\bpause\b", " ", title, flags=re.I)
+    title = re.sub(r"\s+", " ", title).strip()
 
     body = {
         "snippet": {

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -50,7 +51,10 @@ def main() -> None:
         resp = post_reel(video, caption)
         print(f"Posted to Instagram: {resp}")
         if can_post_youtube():
-            title = (caption.splitlines() or [video.stem])[0].strip()[:95] or video.stem
+            from src.tts import strip_pause_marks
+
+            title = (caption.splitlines() or [video.stem])[0].strip()
+            title = re.sub(r"\s+", " ", strip_pause_marks(title)).strip()[:95] or video.stem
             yt_resp = post_short(video, title=f"{title} #Shorts", description=caption)
             print(f"Posted to YouTube: {yt_resp.get('url', yt_resp)}")
         return

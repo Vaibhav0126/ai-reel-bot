@@ -44,8 +44,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          EDGE_TTS_VOICE: en-US-GuyNeural
-          EDGE_TTS_RATE: "+12%"
+          EDGE_TTS_VOICE: en-US-AndrewNeural
+          EDGE_TTS_RATE: "+18%"
           EDGE_TTS_PITCH: "+0Hz"
           AUTO_POST: "false"
         run: python bot/run_daily.py --type fact --post

@@ -15,9 +15,9 @@ import imageio_ffmpeg
 from .config import EDGE_TTS_PITCH, EDGE_TTS_RATE, EDGE_TTS_VOICE
 
 _PAUSE_MARK_RE = re.compile(r"\[pause(?::(short|long|beat))?\]", re.I)
-# Breaths between thoughts — long enough to read as human, short enough for Reels.
-_PAUSE_MS = {"short": 280, "beat": 360, "long": 780}
-_DEFAULT_PAUSE_MS = 520
+# Micro-beats, not dead air. Fast talk + a smirk of silence.
+_PAUSE_MS = {"short": 130, "beat": 190, "long": 360}
+_DEFAULT_PAUSE_MS = 220
 _TICKS_PER_SECOND = 10_000_000
 
 
@@ -338,6 +338,7 @@ _TTS_BACKOFF_SEC = 3.0
 
 def generate_voiceover(text: str, out_path: Path, voice: str | None = None) -> VoiceResult:
     chosen = voice or EDGE_TTS_VOICE
+    print(f"   Voice: {chosen} @ {EDGE_TTS_RATE}")
     last_err: Exception | None = None
     for attempt in range(1, _TTS_ATTEMPTS + 1):
         try:

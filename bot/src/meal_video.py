@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 from .config import (
     FPS,
     KITCHEN_BG_PATH,
+    MIN_REEL_SECONDS,
     VIDEO_HEIGHT,
     VIDEO_WIDTH,
 )
@@ -420,7 +421,7 @@ def render_meal_reel(script: ReelScript, out_dir: Path) -> Path:
     final_path = out_dir / "reel.mp4"
 
     voice: VoiceResult = generate_voiceover(script.voiceover, audio_path)
-    duration = max(20.0, min(voice.duration + 0.5, _MEAL_MAX_DURATION))
+    duration = max(MIN_REEL_SECONDS, min(voice.duration + 0.35, _MEAL_MAX_DURATION))
 
     timeline = align_script_beats(
         [
