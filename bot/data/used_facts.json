@@ -113,5 +113,10 @@
     "id": "time_slower_speed",
     "title": "fast clocks run slow",
     "category": "weird_science"
+  },
+  {
+    "id": "rain_smell",
+    "title": "that rain smell has a name",
+    "category": "nature"
   }
 ]
