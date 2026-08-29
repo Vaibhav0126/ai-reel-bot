@@ -128,5 +128,10 @@
     "id": "cannot_tickle_self",
     "title": "you cannot tickle yourself",
     "category": "body"
+  },
+  {
+    "id": "hot_water_freezes",
+    "title": "hot water can freeze first",
+    "category": "weird_science"
   }
 ]
