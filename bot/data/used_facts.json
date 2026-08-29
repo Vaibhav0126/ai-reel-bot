@@ -123,5 +123,10 @@
     "id": "honey_never_spoils",
     "title": "honey does not spoil",
     "category": "food"
+  },
+  {
+    "id": "cannot_tickle_self",
+    "title": "you cannot tickle yourself",
+    "category": "body"
   }
 ]
