@@ -133,5 +133,10 @@
     "id": "hot_water_freezes",
     "title": "hot water can freeze first",
     "category": "weird_science"
+  },
+  {
+    "id": "octopus_three_hearts",
+    "title": "octopuses have three hearts",
+    "category": "animals"
   }
 ]
