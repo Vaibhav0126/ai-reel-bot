@@ -148,5 +148,10 @@
     "id": "chili_is_pain",
     "title": "chili heat is pain not taste",
     "category": "food"
+  },
+  {
+    "id": "gossip_glue",
+    "title": "gossip is social glue",
+    "category": "psychology"
   }
 ]
