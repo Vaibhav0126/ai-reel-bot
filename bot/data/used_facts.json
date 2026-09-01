@@ -158,5 +158,10 @@
     "id": "pineapple_eats_you",
     "title": "pineapple eats you back",
     "category": "food"
+  },
+  {
+    "id": "glass_not_liquid",
+    "title": "glass is not a slow liquid",
+    "category": "weird_science"
   }
 ]
