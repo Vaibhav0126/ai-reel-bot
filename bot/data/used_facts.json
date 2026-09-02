@@ -163,5 +163,10 @@
     "id": "glass_not_liquid",
     "title": "glass is not a slow liquid",
     "category": "weird_science"
+  },
+  {
+    "id": "ants_no_lungs",
+    "title": "ants do not have lungs",
+    "category": "nature"
   }
 ]
