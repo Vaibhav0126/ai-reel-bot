@@ -168,5 +168,10 @@
     "id": "ants_no_lungs",
     "title": "ants do not have lungs",
     "category": "nature"
+  },
+  {
+    "id": "vanilla_orchid",
+    "title": "vanilla is an orchid",
+    "category": "food"
   }
 ]
