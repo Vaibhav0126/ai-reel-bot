@@ -173,5 +173,10 @@
     "id": "vanilla_orchid",
     "title": "vanilla is an orchid",
     "category": "food"
+  },
+  {
+    "id": "taste_smell",
+    "title": "flavor is mostly smell",
+    "category": "body"
   }
 ]
