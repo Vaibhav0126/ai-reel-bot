@@ -13,18 +13,14 @@ ASSETS_DIR = BOT_ROOT / "assets" / "nib"
 RAW_DIR = ASSETS_DIR / "raw"
 POSES_DIR = ASSETS_DIR / "poses"
 BG_DIR = BOT_ROOT / "assets" / "bg"
-FRIDGE_BG_PATH = BG_DIR / "fridge_open.png"
-KITCHEN_BG_PATH = BG_DIR / "kitchen.png"
 OUTPUT_DIR = BOT_ROOT / "output"
 DATA_DIR = BOT_ROOT / "data"
-USED_TOPICS_PATH = DATA_DIR / "used_topics.json"
-USED_MEALS_PATH = DATA_DIR / "used_meals.json"
 USED_FACTS_PATH = DATA_DIR / "used_facts.json"
+UPLOADS_PATH = DATA_DIR / "uploads.json"
 
-HANDLE = "nibthefridgegoblin"
 CHARACTER_NAME = "Nib"
 
-# Instagram 9:16
+# Vertical 9:16 Shorts
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 FPS = 30
@@ -32,27 +28,32 @@ FPS = 30
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 CLOUDFLARE_ACCOUNT_ID = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "").strip()
-INSTAGRAM_USER_ID = os.getenv("INSTAGRAM_USER_ID", "").strip()
-INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN", "").strip()
 # YouTube Data API v3 (OAuth2 "installed app" client + a one-time refresh token —
 # see bot/get_youtube_refresh_token.py)
 YOUTUBE_CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID", "").strip()
 YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "").strip()
 YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip()
-YOUTUBE_PRIVACY_STATUS = os.getenv("YOUTUBE_PRIVACY_STATUS", "public").strip()
-# Adult male neural voice (Andrew is warmer/more natural than Guy).
-# Slightly fast so Shorts stay punchy; Gemini [pause] marks add the breaths.
+# Uploads go up as "private" with a scheduled publishAt, so a human can watch
+# each Short before it goes live (and unschedule it if it's bad).
+YOUTUBE_PRIVACY_STATUS = os.getenv("YOUTUBE_PRIVACY_STATUS", "private").strip()
+# Publish time is chosen for the target audience, not the machine's timezone.
+PUBLISH_TIMEZONE = os.getenv("PUBLISH_TIMEZONE", "America/New_York").strip()
+PUBLISH_HOUR = int(os.getenv("PUBLISH_HOUR", "12"))
+# Minimum hours between upload and publish, so there is time to review.
+REVIEW_WINDOW_HOURS = float(os.getenv("REVIEW_WINDOW_HOURS", "6"))
+# Voice: free Edge TTS only (no paid API). Andrew is warmer than Guy.
+# Slightly fast so Shorts stay punchy; [pause] marks add the breaths.
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "en-US-AndrewNeural").strip()
 EDGE_TTS_RATE = os.getenv("EDGE_TTS_RATE", "+18%").strip()
 EDGE_TTS_PITCH = os.getenv("EDGE_TTS_PITCH", "+0Hz").strip()
 AUTO_POST = os.getenv("AUTO_POST", "false").strip().lower() in {"1", "true", "yes"}
 # Video length follows the voiceover (plus a short tail). Do not pad to a
-# fixed 30s — Instagram/YouTube loop the file, so leftover silence looks
+# fixed 30s — YouTube loops the file, so leftover silence looks
 # like the reel restarting. Cap under 60s so YouTube still treats it as a Short.
 MIN_REEL_SECONDS = 6.0
 MAX_REEL_SECONDS = 59.5
 
-# Fridge-goblin palette
+# Palette
 BG_TOP = (28, 52, 64)
 BG_BOTTOM = (92, 168, 148)
 CAPTION_FILL = (255, 252, 240)

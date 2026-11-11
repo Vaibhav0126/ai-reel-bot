@@ -8,19 +8,15 @@ from typing import Any, Literal
 
 import httpx
 
-from .config import GEMINI_API_KEY, USED_FACTS_PATH, USED_MEALS_PATH, USED_TOPICS_PATH
+from .config import GEMINI_API_KEY, USED_FACTS_PATH
 from .facts import CATEGORY_HASHTAGS, FACT_CATEGORIES, FACTS, format_fact_caption
-from .meals import MEALS, format_meal_caption
-from .topics import STORIES, format_nutrition_caption
 
-ReelType = Literal["fact", "fridge", "meal"]
+ReelType = Literal["fact"]
 
 _GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-flash-latest",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash",
+    "gemini-3-flash-preview",
 ]
 
 
@@ -46,12 +42,9 @@ class ReelScript:
     category: str = ""
     beats: list[dict[str, Any]] = field(default_factory=list)
     beat_image_paths: list[str] = field(default_factory=list)
-    ingredients: list[dict[str, Any]] = field(default_factory=list)
-    spices: list[dict[str, Any]] = field(default_factory=list)
-    steps: list[str] = field(default_factory=list)
-    meal_image_path: str = ""
-    time_mins: int = 0
-    plate_prompt: str = ""
+    # "gemini" when Gemini wrote the spoken script; "template" when the
+    # hand-written fallback was used. Uploads refuse template scripts.
+    source: str = "template"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -150,6 +143,16 @@ def _save_used_fact_entries(entries: list[dict[str, str]]) -> None:
 
 
 def pick_fact_category() -> str:
+    """Pick a category, weighted by past YouTube views (see performance.py).
+
+    Never repeats yesterday's category. With no view data yet, this is a
+    uniform random choice.
+    """
+    from datetime import datetime, timezone
+
+    from .config import UPLOADS_PATH
+    from .performance import category_weights, load_uploads, weighted_choice
+
     entries = _load_used_fact_entries()
     last_cat = ""
     if entries:
@@ -158,7 +161,8 @@ def pick_fact_category() -> str:
             last = next((f for f in FACTS if f["id"] == entries[-1].get("id")), None)
             last_cat = str(last.get("category") or "") if last else ""
     pool = [c for c in FACT_CATEGORIES if c != last_cat] or list(FACT_CATEGORIES)
-    return random.choice(pool)
+    weights = category_weights(pool, load_uploads(UPLOADS_PATH), datetime.now(timezone.utc))
+    return weighted_choice(weights)
 
 
 def _used_fact_titles() -> list[str]:
@@ -207,42 +211,6 @@ def unused_fact_ids() -> list[str]:
     return [f["id"] for f in FACTS if f["id"] not in used]
 
 
-def pick_story() -> dict:
-    used = set(_load_used(USED_TOPICS_PATH))
-    known = {s["id"] for s in STORIES}
-    used &= known
-    unused = [s for s in STORIES if s["id"] not in used]
-    if not unused:
-        unused = list(STORIES)
-        _save_used(USED_TOPICS_PATH, [])
-    return random.choice(unused)
-
-
-def pick_meal() -> dict:
-    used = set(_load_used(USED_MEALS_PATH))
-    known = {m["id"] for m in MEALS}
-    used &= known
-    unused = [m for m in MEALS if m["id"] not in used]
-    if not unused:
-        unused = list(MEALS)
-        _save_used(USED_MEALS_PATH, [])
-    return random.choice(unused)
-
-
-def mark_topic_used(topic_id: str) -> None:
-    used = _load_used(USED_TOPICS_PATH)
-    if topic_id not in used:
-        used.append(topic_id)
-        _save_used(USED_TOPICS_PATH, used)
-
-
-def mark_meal_used(meal_id: str) -> None:
-    used = _load_used(USED_MEALS_PATH)
-    if meal_id not in used:
-        used.append(meal_id)
-        _save_used(USED_MEALS_PATH, used)
-
-
 # ~58 words at EDGE_TTS_RATE=+18% is about 18–22 seconds. Fast, not a lecture.
 _TARGET_VOICEOVER_WORDS = 58
 _MIN_VOICEOVER_WORDS = 42
@@ -285,7 +253,7 @@ PAUSES (you direct the performance — these become real silence in TTS):
 TONE:
 - Charisma first, facts second — but the facts stay true.
 - Dry mischief, not hype-bro, not "you won't BELIEVE".
-- No medical/legal advice. No begging (follow/save) except meal-reel payoff if asked.
+- No medical/legal advice. No begging (follow/save/subscribe) in the voiceover.
 """
 
 _FACT_VOICE = """
@@ -455,9 +423,8 @@ def _default_hashtags(category: str) -> list[str]:
     return [
         "didyouknow",
         "facts",
-        "reels",
         "shorts",
-        "nibthefridgegoblin",
+        "curiosity",
         *extra,
     ]
 
@@ -569,7 +536,7 @@ def _expand_fact_beats(fact: dict, beats: list[dict[str, Any]]) -> list[dict[str
     if n >= _MIN_VOICEOVER_WORDS or not GEMINI_API_KEY:
         return beats
     prompt = f"""
-The spoken Instagram fact reel is only {n} words. Rewrite it to about {_TARGET_VOICEOVER_WORDS} words
+The spoken YouTube Short is only {n} words. Rewrite it to about {_TARGET_VOICEOVER_WORDS} words
 ({_MIN_VOICEOVER_WORDS}-{_MAX_VOICEOVER_WORDS}) so it stays a fast 15–22 second Short.
 
 Truth only (do not copy this wording):
@@ -613,14 +580,22 @@ def _gemini_invent_fact(category: str) -> dict | None:
     last_err = ""
     for attempt in range(3):
         prompt = f"""
-Pick ONE brand-new, well-established curiosity fact in this category: {category}
-(Attempt {attempt + 1} of 3 — if this is a retry, pick a more obscure but still true fact.)
+Pick ONE true curiosity fact in this category: {category}
+that most people scrolling Shorts have NOT heard before.
+(Attempt {attempt + 1} of 3 — if this is a retry, go more obscure, still true.)
 
 Already used — do NOT repeat, rephrase, or cover the same subject:
 {blocked_lines}
 
 The fact must be:
-- True and widely documented (textbooks, encyclopedias, official records, reputable science)
+- Surprising: it should make a viewer say "wait, what?" The best ones contradict an
+  everyday assumption or have a strange specific number, place, or event.
+- NOT one of the overused viral facts (octopus hearts, honey never spoils, bananas are
+  berries, crows remember faces, wombat cube poop, Cleopatra closer to the moon landing,
+  sharks older than trees, Oxford older than the Aztecs, etc.). If it's been in a
+  "facts you didn't know" listicle a thousand times, pick something else.
+- True and verifiable from a reputable source (peer-reviewed research, museum,
+  government or university source). Lesser-known does NOT mean uncertain.
 - Specific (a concrete claim with a real detail — not "sports are popular")
 - A different subject from every line above
 - Safe: no medical advice, no conspiracy, no cruelty, no living-person gossip
@@ -671,7 +646,7 @@ def _gemini_fact_script(fact: dict) -> ReelScript | None:
         return None
 
     prompt = f"""
-Write a spoken Instagram fact Reel as Nib. This must GRAB ATTENTION in the first second.
+Write a spoken YouTube Short as Nib. This must GRAB ATTENTION in the first second.
 
 Topic: {fact['title']}
 Category: {fact.get('category')}
@@ -709,286 +684,19 @@ title, hashtags (8 tags without #), beats (array of spoken, caption, image_promp
     title = str(fact.get("title") or parsed.get("title") or "").strip()
     fact_out = {**fact, "title": title, "beats": beats}
     print(f"   Gemini: fact script via {model} ({_word_count(beats)} words)")
-    return _script_from_beats(
+    script = _script_from_beats(
         fact_out,
         beats,
         [str(h).lstrip("#") for h in parsed.get("hashtags", [])],
     )
-
-
-def _story_script(story: dict) -> ReelScript:
-    hook = _normalize_pause_marks(_unschool_opener(story["hook"]))
-    discover = _normalize_pause_marks(story["discover"])
-    react = _normalize_pause_marks(story["react"])
-    benefit = _normalize_pause_marks(story["benefit"])
-    extra = _normalize_pause_marks(story.get("extra", ""))
-    payoff = _normalize_pause_marks(story["payoff"])
-    voiceover = _join_spoken([hook, discover, react, benefit, extra, payoff])
-
-    return ReelScript(
-        topic_id=story["id"],
-        topic=story["item"],
-        item=story["item"],
-        item_emoji=story["item_emoji"],
-        hook=hook,
-        line_1=discover,
-        line_2=react,
-        tip=benefit,
-        caption=format_nutrition_caption(story),
-        hashtags=[
-            "nutrition",
-            "fitness",
-            "fridgefinds",
-            "healthtips",
-            "mealprep",
-            "nibthefridgegoblin",
-            "fridgegoblin",
-            "reels",
-        ],
-        voiceover=voiceover,
-        discover=discover,
-        react=react,
-        benefit=benefit,
-        extra=extra,
-        payoff=payoff,
-        reel_type="fridge",
-    )
-
-
-def _meal_script(meal: dict) -> ReelScript:
-    hook = _normalize_pause_marks(_unschool_opener(meal["hook"]))
-    ingredients_line = _normalize_pause_marks(meal["ingredients_line"])
-    spices_line = _normalize_pause_marks(
-        meal.get("spices_line")
-        or "Don't forget the spices listed in the caption — that is the flavor."
-    )
-    cook_line = _normalize_pause_marks(meal["cook_line"])
-    benefit = _normalize_pause_marks(meal["benefit"])
-    payoff = _normalize_pause_marks(meal["payoff"])
-    voiceover = _join_spoken(
-        [hook, ingredients_line, spices_line, cook_line, benefit, payoff]
-    )
-
-    return ReelScript(
-        topic_id=meal["id"],
-        topic=meal["name"],
-        item=meal["name"],
-        item_emoji=meal["ingredients"][0]["key"] if meal.get("ingredients") else "box",
-        hook=hook,
-        line_1=ingredients_line,
-        line_2=cook_line,
-        tip=benefit,
-        caption=format_meal_caption(meal),
-        hashtags=[
-            "easymeals",
-            "quickrecipes",
-            "mealprep",
-            "healthyrecipes",
-            "highprotein",
-            "nibthefridgegoblin",
-            "fridgegoblin",
-            "reels",
-        ],
-        voiceover=voiceover,
-        discover=ingredients_line,
-        react=cook_line,
-        benefit=benefit,
-        extra=spices_line,
-        payoff=payoff,
-        reel_type="meal",
-        ingredients=list(meal.get("ingredients") or []),
-        spices=list(meal.get("spices") or []),
-        steps=list(meal.get("steps") or []),
-        time_mins=int(meal.get("time_mins") or 15),
-        plate_prompt=str(meal.get("plate_prompt") or ""),
-    )
-
-
-def _gemini_script(story: dict) -> ReelScript | None:
-    if not GEMINI_API_KEY:
-        print("   Gemini: no GEMINI_API_KEY — using template script")
-        return None
-
-    prompt = f"""
-Write a spoken Instagram Reel as Nib, standing in front of an open home fridge, holding/showing: {story['item']}.
-Core benefit (keep true): {story['benefit']}
-
-{_NIB_VOICE}
-
-Rules:
-- 45 to 70 words total in voiceover (snappy Reel — pauses are tiny acting beats)
-- Mini story beats: hook (stop the scroll) -> discover the item -> react -> benefit -> extra tip -> payoff
-- YOU place 2–4 [pause] marks in spoken + voiceover like a human. Never in captions. Never say the word pause.
-- No medical advice. No kid-quiz voice. No "Do you know".
-- Do not repeat the same claim in the last beats. Each beat adds something new.
-
-Return ONLY JSON with keys:
-hook, discover, react, benefit, extra, payoff, hashtags (8 tags without #), voiceover
-Do NOT invent a caption — nutrition caption is added separately.
-"""
-    parsed, model, last_err = _gemini_json(prompt)
-    if not parsed:
-        print(f"   Gemini: fridge script failed ({last_err}) — using template script")
-        return None
-
-    hook = _normalize_pause_marks(_unschool_opener(str(parsed["hook"])))
-    discover = _normalize_pause_marks(str(parsed["discover"]))
-    react = _normalize_pause_marks(str(parsed["react"]))
-    benefit = _normalize_pause_marks(str(parsed["benefit"]))
-    extra = _normalize_pause_marks(str(parsed.get("extra", "")))
-    payoff = _normalize_pause_marks(str(parsed["payoff"]))
-    voiceover = _normalize_pause_marks(_unschool_opener(str(parsed.get("voiceover") or "")))
-    if not _count_pauses(voiceover):
-        voiceover = _join_spoken([hook, discover, react, benefit, extra, payoff])
-    print(f"   Gemini: fridge script via {model}")
-    return ReelScript(
-        topic_id=story["id"],
-        topic=story["item"],
-        item=story["item"],
-        item_emoji=story["item_emoji"],
-        hook=hook,
-        line_1=discover,
-        line_2=react,
-        tip=benefit,
-        caption=format_nutrition_caption(story),
-        hashtags=[str(h).lstrip("#") for h in parsed.get("hashtags", [])][:10]
-        or [
-            "nutrition",
-            "fitness",
-            "fridgefinds",
-            "healthtips",
-            "mealprep",
-            "nibthefridgegoblin",
-            "fridgegoblin",
-            "reels",
-        ],
-        voiceover=voiceover,
-        discover=discover,
-        react=react,
-        benefit=benefit,
-        extra=extra,
-        payoff=payoff,
-        reel_type="fridge",
-    )
-
-
-def _gemini_meal_script(meal: dict) -> ReelScript | None:
-    if not GEMINI_API_KEY:
-        print("   Gemini: no GEMINI_API_KEY — using template meal script")
-        return None
-
-    ingredient_names = ", ".join(
-        ing.get("label") or ing.get("key", "") for ing in meal.get("ingredients") or []
-    )
-    spice_names = ", ".join(
-        sp.get("label") or sp.get("key", "") for sp in meal.get("spices") or []
-    ) or "salt, black pepper"
-    step_summary = " | ".join((meal.get("steps") or [])[:4])
-    prompt = f"""
-Write a spoken Instagram Reel as Nib cooking in a home kitchen.
-Meal: {meal['name']} (~{meal.get('time_mins', 15)} minutes).
-Ingredients: {ingredient_names}.
-Spices (MUST mention these by name in spices_line): {spice_names}.
-Cooking outline: {step_summary}.
-
-{_NIB_VOICE}
-
-You are a goblin chef who makes people hungry AND stay to cook — not a recipe-card robot.
-
-Rules:
-- First person, kitchen setting (NOT standing at the fridge)
-- 70 to 95 words total voiceover. Keep it moving.
-- Beats in order. YOU place 2–4 [pause] marks where a cook would actually breathe — not after every sentence:
-  1) hook — stop the scroll, name the meal like it's a heist
-  2) ingredients_line — list the main ingredients clearly
-  3) spices_line — name the spices and say they are listed in the caption
-  4) cook_line — walk through cooking in order (still charismatic, still clear)
-  5) benefit — why it's worth making
-  6) payoff — save/follow CTA, remind caption has full recipe
-- No medical advice. No "Do you know". No kid-show host.
-- Do NOT invent ingredients, spices, or macros not listed above.
-
-Return ONLY JSON with keys:
-hook, ingredients_line, spices_line, cook_line, benefit, payoff, hashtags (8 tags without #), voiceover
-Do NOT invent a caption — detailed recipe caption is added separately.
-"""
-    parsed, model, last_err = _gemini_json(prompt)
-    if not parsed:
-        print(f"   Gemini: meal script failed ({last_err}) — using template")
-        return None
-
-    hook = _normalize_pause_marks(_unschool_opener(str(parsed["hook"])))
-    ingredients_line = _normalize_pause_marks(str(parsed["ingredients_line"]))
-    spices_line = _normalize_pause_marks(
-        str(parsed.get("spices_line") or meal.get("spices_line") or "")
-    )
-    if not spices_line:
-        spices_line = f"Add your spices — {spice_names}. Full amounts are in the caption."
-    cook_line = _normalize_pause_marks(str(parsed["cook_line"]))
-    benefit = _normalize_pause_marks(str(parsed["benefit"]))
-    payoff = _normalize_pause_marks(str(parsed["payoff"]))
-    voiceover = _normalize_pause_marks(_unschool_opener(str(parsed.get("voiceover") or "")))
-    if not _count_pauses(voiceover):
-        voiceover = _join_spoken(
-            [hook, ingredients_line, spices_line, cook_line, benefit, payoff]
-        )
-    print(f"   Gemini: meal script via {model}")
-    return ReelScript(
-        topic_id=meal["id"],
-        topic=meal["name"],
-        item=meal["name"],
-        item_emoji=meal["ingredients"][0]["key"] if meal.get("ingredients") else "box",
-        hook=hook,
-        line_1=ingredients_line,
-        line_2=cook_line,
-        tip=benefit,
-        caption=format_meal_caption(meal),
-        hashtags=[str(h).lstrip("#") for h in parsed.get("hashtags", [])][:10]
-        or [
-            "easymeals",
-            "quickrecipes",
-            "mealprep",
-            "healthyrecipes",
-            "highprotein",
-            "nibthefridgegoblin",
-            "fridgegoblin",
-            "reels",
-        ],
-        voiceover=voiceover,
-        discover=ingredients_line,
-        react=cook_line,
-        benefit=benefit,
-        extra=spices_line,
-        payoff=payoff,
-        reel_type="meal",
-        ingredients=list(meal.get("ingredients") or []),
-        spices=list(meal.get("spices") or []),
-        steps=list(meal.get("steps") or []),
-        time_mins=int(meal.get("time_mins") or 15),
-        plate_prompt=str(meal.get("plate_prompt") or ""),
-    )
+    script.source = "gemini"
+    return script
 
 
 def generate_script(
     topic: dict | None = None,
     reel_type: ReelType = "fact",
 ) -> ReelScript:
-    if reel_type == "meal":
-        meal = pick_meal()
-        if topic and "id" in topic:
-            match = next((m for m in MEALS if m["id"] == topic["id"]), None)
-            if match:
-                meal = match
-        return _gemini_meal_script(meal) or _meal_script(meal)
-
-    if reel_type == "fridge":
-        story = pick_story()
-        if topic and "id" in topic:
-            match = next((s for s in STORIES if s["id"] == topic["id"]), None)
-            if match:
-                story = match
-        return _gemini_script(story) or _story_script(story)
-
     fact = None
     if topic and topic.get("id"):
         fact = next((f for f in FACTS if f["id"] == topic["id"]), None) or topic
@@ -998,5 +706,7 @@ def generate_script(
     if _word_count(script.beats) < _MIN_VOICEOVER_WORDS and GEMINI_API_KEY:
         expanded = _expand_fact_beats(fact, script.beats)
         if expanded is not script.beats:
-            return _script_from_beats(fact, expanded, script.hashtags)
+            longer = _script_from_beats(fact, expanded, script.hashtags)
+            longer.source = script.source
+            return longer
     return script

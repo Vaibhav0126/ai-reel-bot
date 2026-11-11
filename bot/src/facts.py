@@ -1061,7 +1061,7 @@ def format_fact_caption(fact: dict[str, Any], hashtags: list[str] | None = None)
     spoken = re.sub(r"\s+", " ", spoken).strip()
     recap = spoken[:220].rsplit(" ", 1)[0] + "…" if len(spoken) > 220 else spoken
     tags = hashtags or (
-        ["didyouknow", "facts", "reels", "nibthefridgegoblin"]
+        ["didyouknow", "facts", "shorts", "curiosity"]
         + CATEGORY_HASHTAGS.get(fact.get("category", ""), ["curious"])
     )
     tag_line = " ".join(f"#{t.lstrip('#')}" for t in tags[:12])
@@ -1070,7 +1070,7 @@ def format_fact_caption(fact: dict[str, Any], hashtags: list[str] | None = None)
         "",
         recap,
         "",
-        "Follow @nibthefridgegoblin",
+        "Subscribe for one weird true fact every day.",
         tag_line,
     ]
     return "\n".join(lines)

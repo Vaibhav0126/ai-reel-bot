@@ -1,12 +1,13 @@
-name: Daily Nib Fact Reel
+name: Daily Nib Fact Short
+
+# One Short a day, uploaded PRIVATE and scheduled to go public at 12:00 US
+# Eastern (PUBLISH_TIMEZONE / PUBLISH_HOUR). The run happens ~13-14 hours
+# earlier (12:17 JST), which leaves time to watch it in YouTube Studio and
+# unschedule it if it's not good enough.
 
 on:
   schedule:
-    # ~1:00 PM JST = 04:00 UTC (offset a few minutes to avoid GitHub's
-    # top-of-the-hour scheduler congestion, which can delay/skip :00 crons)
-    - cron: "7 4 * * *"
-    # ~7:00 PM JST = 10:00 UTC
-    - cron: "9 10 * * *"
+    - cron: "17 3 * * *"   # 03:17 UTC = 12:17 JST (offset from :00 to avoid scheduler congestion)
   workflow_dispatch:
 
 concurrency:
@@ -17,7 +18,7 @@ permissions:
   contents: write
 
 jobs:
-  post-fact-reel:
+  fact-short:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -34,31 +35,30 @@ jobs:
       - name: Install dependencies
         run: pip install -r bot/requirements.txt
 
-      - name: Generate and post fact reel
+      - name: Generate and schedule today's Short
         env:
-          INSTAGRAM_USER_ID: ${{ secrets.INSTAGRAM_USER_ID }}
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          EDGE_TTS_VOICE: en-US-AndrewNeural
-          EDGE_TTS_RATE: "+18%"
-          EDGE_TTS_PITCH: "+0Hz"
-          AUTO_POST: "false"
-        run: python bot/run_daily.py --type fact --post
+          PUBLISH_TIMEZONE: America/New_York
+          PUBLISH_HOUR: "12"
+        run: python bot/run_daily.py --post
 
-      - name: Persist used facts
-        if: success()
+      - name: Persist used facts and upload stats
+        # always(): if the upload fails after the fact was marked used, the
+        # fact must still be recorded so tomorrow's run doesn't repeat it.
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bot/data/used_facts.json
+          git add bot/data/used_facts.json bot/data/uploads.json 2>/dev/null || git add bot/data/used_facts.json
           if git diff --staged --quiet; then
-            echo "No used_facts changes to commit."
+            echo "No data changes to commit."
           else
-            git commit -m "chore: update used facts after daily reel"
+            git commit -m "chore: update used facts and upload stats"
+            git pull --rebase
             git push
           fi

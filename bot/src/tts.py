@@ -9,7 +9,6 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import edge_tts
 import imageio_ffmpeg
 
 from .config import EDGE_TTS_PITCH, EDGE_TTS_RATE, EDGE_TTS_VOICE
@@ -102,6 +101,8 @@ def _normalize_token(text: str) -> str:
 async def _stream_plain(
     text: str, voice: str
 ) -> tuple[bytes, list[WordTiming], list[SentenceTiming]]:
+    import edge_tts  # imported lazily so importing this module stays light
+
     communicate = edge_tts.Communicate(
         text,
         voice=voice,
@@ -267,8 +268,8 @@ def _fill_missing_timings(
 
 
 async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> VoiceResult:
-    # Plain-text Edge calls (same as the working other repo), with real silence
-    # stitched in for [pause] marks. Do not inject SSML into communicate.texts.
+    # Plain-text Edge calls, with real silence stitched in for [pause] marks.
+    # Do not inject SSML into communicate.texts.
     leading_ms, segments = _pause_segments(text)
     if not segments:
         raise RuntimeError("voiceover text was empty after stripping pause marks")
@@ -297,10 +298,10 @@ async def _synthesize_with_timings(text: str, out_path: Path, voice: str) -> Voi
         add_silence(leading_ms)
 
         for spoken, pause_after_ms in segments:
+            wav_part = tmp_dir / f"part_{n:02d}.wav"
             mp3_part = tmp_dir / f"part_{n:02d}.mp3"
             audio, part_words, part_sentences = await _stream_plain(spoken, voice)
             mp3_part.write_bytes(audio)
-            wav_part = tmp_dir / f"part_{n:02d}.wav"
             _to_wav(mp3_part, wav_part, sample_rate)
             wav_parts.append(wav_part)
 
@@ -337,8 +338,9 @@ _TTS_BACKOFF_SEC = 3.0
 
 
 def generate_voiceover(text: str, out_path: Path, voice: str | None = None) -> VoiceResult:
+    """Free Edge TTS voice, retried with backoff on transient failures."""
     chosen = voice or EDGE_TTS_VOICE
-    print(f"   Voice: {chosen} @ {EDGE_TTS_RATE}")
+    print(f"   Voice: Edge {chosen} @ {EDGE_TTS_RATE}")
     last_err: Exception | None = None
     for attempt in range(1, _TTS_ATTEMPTS + 1):
         try:
@@ -382,9 +384,16 @@ def align_script_beats(
             for i, (name, text) in enumerate(cleaned)
         ]
 
-    tokens = [_normalize_token(w.text) for w in words]
-    token_starts = [w.start for w in words]
-    token_ends = [w.end for w in words]
+    # Split each Edge word the same way the script text is split ("forty-three"
+    # is two tokens), so a hyphenated word can't throw the whole alignment off.
+    tokens: list[str] = []
+    token_starts: list[float] = []
+    token_ends: list[float] = []
+    for w in words:
+        for part in re.findall(r"[A-Za-z0-9']+", w.text) or [w.text]:
+            tokens.append(_normalize_token(part))
+            token_starts.append(w.start)
+            token_ends.append(w.end)
 
     timeline: list[tuple[str, str, float, float]] = []
     search_from = 0
@@ -399,10 +408,10 @@ def align_script_beats(
         idx = _find_sequence(tokens, want, search_from)
         if idx is None:
             # fallback: take next unused word cluster by length
-            idx = min(search_from, len(words) - 1)
-            end_idx = min(idx + max(len(want), 1) - 1, len(words) - 1)
+            idx = min(search_from, len(tokens) - 1)
+            end_idx = min(idx + max(len(want), 1) - 1, len(tokens) - 1)
         else:
-            end_idx = min(idx + len(want) - 1, len(words) - 1)
+            end_idx = min(idx + len(want) - 1, len(tokens) - 1)
 
         start = token_starts[idx]
         end = token_ends[end_idx]

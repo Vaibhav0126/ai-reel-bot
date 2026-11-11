@@ -9,15 +9,9 @@ from urllib.parse import quote
 import httpx
 from PIL import Image, ImageDraw, ImageEnhance
 
-from .config import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, GEMINI_API_KEY
+from .config import CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN
 from .cutout import cutout_object
 from .script_gen import ReelScript
-
-_GEMINI_IMAGE_MODELS = [
-    "gemini-2.5-flash-image",
-    "gemini-3.1-flash-lite-image",
-    "gemini-3.1-flash-image",
-]
 
 _CF_MODEL = "@cf/black-forest-labs/flux-1-schnell"
 
@@ -28,18 +22,6 @@ _STYLE = (
     "no frame, no square, no border, no card, no collage, no blur, "
     "no text, no letters, no numbers, no watermark, no logo, no mascot, no people"
 )
-
-
-def _extract_image_bytes(data: dict) -> bytes | None:
-    try:
-        parts = data["candidates"][0]["content"]["parts"]
-    except (KeyError, IndexError, TypeError):
-        return None
-    for part in parts:
-        inline = part.get("inlineData") or part.get("inline_data")
-        if inline and inline.get("data"):
-            return base64.b64decode(inline["data"])
-    return None
 
 
 def _enrich_prompt(prompt: str, caption: str, spoken: str) -> str:
@@ -174,38 +156,6 @@ def _pollinations_cartoon(prompt: str, out_path: Path) -> Path | None:
     return None
 
 
-def _gemini_cartoon(prompt: str, out_path: Path) -> Path | None:
-    if not GEMINI_API_KEY:
-        return None
-    with httpx.Client(timeout=120) as client:
-        for model in _GEMINI_IMAGE_MODELS:
-            url = (
-                "https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent?key={GEMINI_API_KEY}"
-            )
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "responseModalities": ["TEXT", "IMAGE"],
-                    "imageConfig": {"aspectRatio": "1:1"},
-                },
-            }
-            try:
-                resp = client.post(url, json=payload)
-                if resp.status_code >= 400:
-                    continue
-                raw = _extract_image_bytes(resp.json())
-                if not raw:
-                    continue
-                img = Image.open(io.BytesIO(raw)).convert("RGB")
-                _to_object_png(img, out_path)
-                print(f"   Fact art: Gemini ({model}) → {out_path.name}")
-                return out_path
-            except Exception:
-                continue
-    return None
-
-
 def cartoon_shape_fallback(prompt: str, out_path: Path, index: int, caption: str = "") -> Path:
     """Simple isolated shape on transparent pixels — no card."""
     palettes = [
@@ -239,41 +189,7 @@ def generate_one_beat_image(
     result = _pollinations_cartoon(full, out_path)
     if result is not None:
         return result
-    result = _gemini_cartoon(full, out_path)
-    if result is not None:
-        return result
     return cartoon_shape_fallback(prompt, out_path, index, caption)
-
-
-def generate_fridge_item_image(script: ReelScript, out_dir: Path) -> Path | None:
-    """Cloudflare (then fallbacks) cartoon of the food Nib pulls from the fridge."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "fridge_item.png"
-    item = (script.item or script.topic or "fridge snack").strip()
-    if item.lower() in {"nothing", "sleep"}:
-        prompt = (
-            "isolated sticker of a glowing crescent moon above a quiet closed fridge, "
-            "large and centered, children's book illustration, bold saturated colors, "
-            "thick clean outlines, plain solid white background, no text, no mascot, no people"
-        )
-    else:
-        prompt = (
-            f"isolated sticker of {item} as it looks in a home refrigerator, "
-            "appetizing, large and centered, children's book illustration, "
-            "bold saturated colors, thick clean outlines, sharp focus, "
-            "plain solid white background, no frame, no text, no mascot, no people"
-        )
-    full = _enrich_prompt(prompt, item, script.discover or script.hook)
-    result = _cloudflare_cartoon(full, out_path)
-    if result is None:
-        result = _pollinations_cartoon(full, out_path)
-    if result is None:
-        result = _gemini_cartoon(full, out_path)
-    if result is None:
-        print("   Fridge item: no generated image — using cartoon prop")
-        return None
-    script.beat_image_paths = [str(result)]
-    return result
 
 
 def generate_fact_images(script: ReelScript, out_dir: Path) -> list[Path]:

@@ -37,7 +37,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    # read view counts for the feedback loop (bot/src/performance.py)
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 
 
 def _flow_from_env(root: Path) -> InstalledAppFlow | None:

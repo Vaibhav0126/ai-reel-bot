@@ -1,1 +1,1 @@
-"""Nib the Fridge Goblin — daily Instagram Reel pipeline."""
+"""Nib — daily AI curiosity-fact YouTube Shorts pipeline."""

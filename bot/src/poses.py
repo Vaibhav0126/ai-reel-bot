@@ -81,7 +81,6 @@ def extract_poses() -> list[Path]:
 
     master = Image.open(RAW_DIR / "Nib_master.png")
     saved.append(_save_crop(master, (176, 240, 1252, 1420), "idle"))
-    saved.append(_save_crop(master, (1352, 80, 2764, 1424), "fridge"))
 
     expr = Image.open(RAW_DIR / "Nib_expression.png")
     expr_boxes = [

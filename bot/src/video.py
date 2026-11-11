@@ -32,6 +32,47 @@ POSE_FOR_INDEX = [
 ]
 
 
+# The first second decides whether a viewer swipes. During HOOK_SECONDS the
+# beat-0 image slams in large with a decaying shake, Nib slides up from below,
+# and a short white flash marks the cut. After that the normal layout runs.
+HOOK_SECONDS = 0.9
+HOOK_ZOOM_FROM = 1.45
+HOOK_SHAKE_PX = 22
+NIB_SLIDE_SECONDS = 0.55
+NIB_SLIDE_PX = 520
+FLASH_FRAMES = 4
+HOOK_STICKER_SIZE = 820
+STICKER_SIZE = 640
+
+
+def _ease_out(x: float) -> float:
+    x = max(0.0, min(1.0, x))
+    return 1 - (1 - x) ** 3
+
+
+def hook_motion(t: float) -> tuple[float, int, int, int, int]:
+    """(sticker_zoom, shake_x, shake_y, nib_offset_y, flash_alpha) at time t."""
+    p = _ease_out(t / HOOK_SECONDS)
+    zoom = 1.0 + (HOOK_ZOOM_FROM - 1.0) * (1 - p) if t < HOOK_SECONDS else 1.0
+    decay = (1 - p) if t < HOOK_SECONDS else 0.0
+    shake_x = int(HOOK_SHAKE_PX * decay * math.sin(t * 70))
+    shake_y = int(HOOK_SHAKE_PX * 0.6 * decay * math.cos(t * 55))
+    nib_off = int(NIB_SLIDE_PX * (1 - _ease_out(t / NIB_SLIDE_SECONDS)))
+    frame_idx = int(round(t * FPS))
+    flash = int(200 * (1 - frame_idx / FLASH_FRAMES)) if frame_idx < FLASH_FRAMES else 0
+    return zoom, shake_x, shake_y, nib_off, flash
+
+
+def _paste(frame: Image.Image, img: Image.Image, x: int, y: int) -> None:
+    """alpha_composite that tolerates images partly outside the frame."""
+    left, top = max(0, -x), max(0, -y)
+    right = min(img.width, frame.width - x)
+    bottom = min(img.height, frame.height - y)
+    if right <= left or bottom <= top:
+        return
+    frame.alpha_composite(img.crop((left, top, right, bottom)), (x + left, y + top))
+
+
 def _load_pose(path: Path, max_h: int = 700) -> Image.Image:
     from .cutout import cutout_character
 
@@ -73,7 +114,7 @@ def _object_sticker(img: Image.Image, max_size: int) -> Image.Image:
     return rgba.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
-# Sit below iPhone Dynamic Island + Instagram Reels top chrome (username / audio).
+# Sit below iPhone Dynamic Island + the Shorts player top chrome (channel name / audio).
 CAPTION_TOP = 210
 CAPTION_FONT_SIZE = 58
 CAPTION_STROKE = 6
@@ -189,19 +230,14 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
         print(f"     {start:5.2f}-{end:5.2f}s  [{name}] {text[:48]}")
 
     poses = list_poses()
-    pose_cache = {
-        name: _load_pose(path)
-        for name, path in poses.items()
-        if name != "fridge"
-    }
-    if not pose_cache:
-        pose_cache = {name: _load_pose(path) for name, path in poses.items()}
+    pose_cache = {name: _load_pose(path) for name, path in poses.items()}
 
     stickers: dict[str, Image.Image] = {}
     for i, path_str in enumerate(script.beat_image_paths):
         p = Path(path_str)
         if p.exists():
-            stickers[f"beat_{i}"] = _object_sticker(Image.open(p), 640)
+            size = HOOK_STICKER_SIZE if i == 0 else STICKER_SIZE
+            stickers[f"beat_{i}"] = _object_sticker(Image.open(p), size)
 
     base = _still_base()
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
@@ -254,6 +290,7 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
             punch *= 0.88
 
             frame = base.copy().convert("RGBA")
+            hook_zoom, shake_x, shake_y, nib_off, flash = hook_motion(t)
 
             beat_idx = 0
             if beat.startswith("beat_"):
@@ -283,6 +320,7 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
             ny = VIDEO_HEIGHT - nib_r.height - 80 + bounce
             nx = max(10, min(VIDEO_WIDTH - nib_r.width - 10, nx))
             ny = max(520, min(VIDEO_HEIGHT - nib_r.height - 20, ny))
+            ny += nib_off  # slide in from below during the hook
 
             word_idx = active_word_index(voice.words, t)
             active_word = voice.words[word_idx] if word_idx >= 0 else None
@@ -292,26 +330,30 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
 
             sticker = stickers.get(beat)
             if sticker is not None:
-                pop = 0.94 + 0.06 * punch
+                pop = (0.94 + 0.06 * punch) * hook_zoom
                 sw = max(1, int(sticker.width * pop))
                 sh = max(1, int(sticker.height * pop))
                 art = sticker.resize((sw, sh), Image.Resampling.LANCZOS)
-                ax = (VIDEO_WIDTH - art.width) // 2
+                ax = (VIDEO_WIDTH - art.width) // 2 + shake_x
                 ay = caption_bottom + 18 + int(4 * math.sin(t * 2.0))
                 max_ay = ny - art.height - 12
                 if max_ay > 0:
                     ay = min(ay, max_ay)
-                ay = max(caption_bottom + 8, ay)
+                ay = max(caption_bottom + 8, ay) + shake_y
                 glow = Image.new("RGBA", (art.width + 80, art.height + 80), (0, 0, 0, 0))
                 gd = ImageDraw.Draw(glow)
                 gd.ellipse((12, 12, glow.width - 12, glow.height - 12), fill=(0, 0, 0, 55))
                 glow = glow.filter(ImageFilter.GaussianBlur(16))
-                frame.alpha_composite(glow, (ax - 40, ay - 40))
-                frame.alpha_composite(art, (ax, ay))
+                _paste(frame, glow, ax - 40, ay - 40)
+                _paste(frame, art, ax, ay)
 
-            frame.alpha_composite(shadow, (nx, ny + nib_r.height - 50))
-            frame.alpha_composite(nib_r, (nx, ny))
+            _paste(frame, shadow, nx, ny + nib_r.height - 50)
+            _paste(frame, nib_r, nx, ny)
             _draw_karaoke_captions(frame, caption_group, active_word)
+            if flash:
+                frame.alpha_composite(
+                    Image.new("RGBA", frame.size, (255, 255, 255, flash))
+                )
 
             rgb = frame.convert("RGB")
             try:
@@ -347,53 +389,3 @@ def render_reel(script: ReelScript, out_dir: Path) -> Path:
     if code != 0 or not final_path.exists():
         raise RuntimeError(f"ffmpeg encode failed:\n{err[-2000:]}")
     return final_path
-
-
-def _ken_burns(base: Image.Image, progress: float) -> Image.Image:
-    """Kept for leftover meal_video imports; fact reels use a still background."""
-    scale = 1.0 + 0.05 * progress
-    w = int(VIDEO_WIDTH * scale)
-    h = int(VIDEO_HEIGHT * scale)
-    framed = base.resize((w, h), Image.Resampling.BILINEAR)
-    max_x = w - VIDEO_WIDTH
-    max_y = h - VIDEO_HEIGHT
-    x = int(max_x * (0.4 + 0.2 * math.sin(progress * math.pi)))
-    y = int(max_y * (0.3 + 0.15 * progress))
-    return framed.crop((x, y, x + VIDEO_WIDTH, y + VIDEO_HEIGHT))
-
-
-def _speech_bubble(frame: Image.Image, text: str, anchor_x: int, anchor_y: int) -> None:
-    """Kept for leftover meal_video imports."""
-    if not text:
-        return
-    from .config import CAPTION_STROKE
-
-    draw = ImageDraw.Draw(frame, "RGBA")
-    font = get_font(44)
-    words = text.split()
-    lines: list[str] = []
-    cur = ""
-    for w in words:
-        trial = (cur + " " + w).strip()
-        if len(trial) > 22:
-            if cur:
-                lines.append(cur)
-            cur = w
-        else:
-            cur = trial
-    if cur:
-        lines.append(cur)
-    lines = lines[:4]
-    line_h = 52
-    pad_x, pad_y = 26, 20
-    tw = max(draw.textbbox((0, 0), ln, font=font)[2] for ln in lines)
-    th = line_h * len(lines)
-    bw = tw + pad_x * 2
-    bh = th + pad_y * 2
-    x = max(30, min(anchor_x, VIDEO_WIDTH - bw - 30))
-    y = max(40, min(anchor_y, VIDEO_HEIGHT - bh - 300))
-    draw.rounded_rectangle((x + 6, y + 8, x + bw + 6, y + bh + 8), radius=26, fill=(0, 0, 0, 90))
-    draw.rounded_rectangle((x, y, x + bw, y + bh), radius=26, fill=(255, 252, 245, 245))
-    draw.rounded_rectangle((x, y, x + bw, y + bh), radius=26, outline=(255, 180, 70, 255), width=4)
-    for i, ln in enumerate(lines):
-        draw.text((x + pad_x, y + pad_y + i * line_h), ln, font=font, fill=CAPTION_STROKE)

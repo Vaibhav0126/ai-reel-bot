@@ -1,40 +1,35 @@
 #!/usr/bin/env python3
-"""Generate (and optionally post) today's @nibthefridgegoblin reel."""
+"""Generate today's Nib curiosity-fact Short and (optionally) schedule it on YouTube."""
 
 from __future__ import annotations
 
 import argparse
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from src.instagram import post_reel  # noqa: E402
+from src.config import PUBLISH_HOUR, PUBLISH_TIMEZONE, REVIEW_WINDOW_HOURS  # noqa: E402
 from src.pipeline import run_daily  # noqa: E402
 from src.poses import extract_poses  # noqa: E402
-from src.youtube import can_post as can_post_youtube  # noqa: E402
-from src.youtube import post_short  # noqa: E402
+from src.scheduling import next_publish_time, to_rfc3339  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Nib daily reel bot")
+    parser = argparse.ArgumentParser(description="Nib daily curiosity-fact Short")
     parser.add_argument("--extract-poses", action="store_true", help="Only extract pose PNGs")
     parser.add_argument(
-        "--post", action="store_true", help="Publish to Instagram + YouTube Shorts after generate"
-    )
-    parser.add_argument("--no-post", action="store_true", help="Never publish (default)")
-    parser.add_argument(
-        "--type",
-        choices=("fact", "fridge", "meal"),
-        default="fact",
-        help="Reel type: curiosity fact, fridge food-fact, or meal recipe. Default: fact",
+        "--post",
+        action="store_true",
+        help="Upload to YouTube as private, scheduled for the next publish slot",
     )
     parser.add_argument(
         "--post-file",
         type=Path,
-        help="Publish an existing MP4 + sibling caption.txt (skip generate)",
+        help="Schedule an existing MP4 (+ sibling caption.txt) without generating",
     )
     args = parser.parse_args()
 
@@ -44,29 +39,29 @@ def main() -> None:
         return
 
     if args.post_file:
+        from src.tts import strip_pause_marks
+        from src.youtube import post_short
+
         video = args.post_file.expanduser().resolve()
         caption_path = video.parent / "caption.txt"
         caption = caption_path.read_text() if caption_path.exists() else ""
-        print(f"Posting existing video: {video}")
-        resp = post_reel(video, caption)
-        print(f"Posted to Instagram: {resp}")
-        if can_post_youtube():
-            from src.tts import strip_pause_marks
-
-            title = (caption.splitlines() or [video.stem])[0].strip()
-            title = re.sub(r"\s+", " ", strip_pause_marks(title)).strip()[:95] or video.stem
-            yt_resp = post_short(video, title=f"{title} #Shorts", description=caption)
-            print(f"Posted to YouTube: {yt_resp.get('url', yt_resp)}")
+        title = (caption.splitlines() or [video.stem])[0].strip()
+        title = re.sub(r"\s+", " ", strip_pause_marks(title)).strip()[:90] or video.stem
+        publish_at = to_rfc3339(
+            next_publish_time(
+                datetime.now(timezone.utc), PUBLISH_TIMEZONE, PUBLISH_HOUR, REVIEW_WINDOW_HOURS
+            )
+        )
+        resp = post_short(video, title=f"{title} #Shorts", description=caption, publish_at=publish_at)
+        print(f"Scheduled for {publish_at} UTC: {resp.get('url', resp)}")
         return
 
-    post = True if args.post else False
-    if args.no_post:
-        post = False
-    result = run_daily(post=post, reel_type=args.type)
+    result = run_daily(post=args.post)
     print("\nReady:")
-    print(f"  type:    {result.get('reel_type', args.type)}")
     print(f"  video:   {result['video']}")
     print(f"  caption: {result['output_dir']}/caption.txt")
+    if result.get("publish_at"):
+        print(f"  goes live: {result['publish_at']} UTC (review it in YouTube Studio first)")
 
 
 if __name__ == "__main__":
